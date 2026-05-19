@@ -2,10 +2,6 @@
 title: "Edge Agent Runtime — Sarvam AI Assignment"
 author: "Ansh Singhal"
 date: "19 May 2026"
-pdf_options:
-  format: A4
-  margin: "20mm 22mm"
-  printBackground: true
 ---
 
 <div style="page-break-after: always; text-align: center; padding-top: 120px;">
