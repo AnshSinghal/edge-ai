@@ -1,0 +1,323 @@
+{
+  "info": {
+    "_postman_id": "edge-agent-a2-crash-recovery",
+    "name": "Edge Agent — A2: Worker Crash Recovery",
+    "description": "Sarvam AI — Edge Agent Runtime — Part A §2 crash recovery scenarios.\n\nBase URL: http://127.0.0.1:8741\nAll requests use Bearer auth. The X-Edge-Worker-Recovered header is set by the gateway on successful re-route after a worker crash.\n\nFolders:\n1. Baseline — normal healthy inference (reference)\n2. Crash Recovery — all client-visible outcomes during/after a worker crash\n3. Deduplication — retry idempotency by request_id",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8741",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "ek_live_your_key_here",
+      "type": "string"
+    },
+    {
+      "key": "requestId",
+      "value": "req_7f3a9b",
+      "type": "string",
+      "description": "Stable request ID used across deduplication tests"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 — Baseline (Healthy)",
+      "description": "Reference requests under normal operating conditions — no crashes in the pool.",
+      "item": [
+        {
+          "name": "TTS — Normal Inference (Healthy Worker)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\n    \"temperature\": 0.7\n  },\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Healthy pool — worker-0 serves the request normally. No X-Edge-Worker-Recovered header."
+          },
+          "response": [
+            {
+              "name": "200 OK — Healthy (ANE, Tier 0)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 45\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 — Crash Recovery Scenarios",
+      "description": "The three possible outcomes a client sees when edge-worker-0 crashes during or just before its request is served.",
+      "item": [
+        {
+          "name": "Case 1 — Transparent Re-route (Same Model on Worker-1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "worker-0 crashes mid-request. worker-1 has the same model loaded. Gateway re-dispatches transparently within ~5–15ms.\n\nClient receives 200 OK with:\n- X-Edge-Worker-Recovered: true (informational — for reliability telemetry)\n- Slightly higher latency than baseline (~50ms extra)"
+          },
+          "response": [
+            {
+              "name": "200 OK — Transparent Re-route (X-Edge-Worker-Recovered)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"},
+                {"key": "X-Edge-Worker-Recovered", "value": "true"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 95,\n    \"retry_count\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 2 — Re-route with Model Swap (Different Model on Worker-1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "worker-0 crashes. worker-1 has a different model loaded (indic-nmt-v2). Gateway re-dispatches to worker-1, which must swap models — takes 2–5s.\n\nClient still receives 200 OK (no error) but with much higher latency and X-Edge-Latency-Factor reflecting the swap cost."
+          },
+          "response": [
+            {
+              "name": "200 OK — Re-route with Model Swap (~3s latency)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "2.8"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Tier", "value": "1"},
+                {"key": "X-Edge-Worker-Recovered", "value": "true"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 1,\n    \"latency_ms\": 2950,\n    \"retry_count\": 1\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 3 — 503 No Workers (Single-Worker Pool)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Single-worker pool — worker-0 crashes. No alternate worker. Gateway returns 503 immediately.\n\nRetry-After: 1 → warm restart completes in ~200–500ms, so a 1s backoff is safe.\nreason: worker_crash_recovery distinguishes this from a budget-exceeded quarantine."
+          },
+          "response": [
+            {
+              "name": "503 — No Workers (Crash Recovery in Progress)",
+              "status": "Service Unavailable",
+              "code": 503,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "Retry-After", "value": "1"},
+                {"key": "X-Edge-Device-Status", "value": "faulted"}
+              ],
+              "body": "{\n  \"error\": \"no_workers\",\n  \"retry_after\": 1,\n  \"reason\": \"worker_crash_recovery\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 4 — Retry After Warm Restart (200 OK, ~1s after Case 3)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Client retries ~1s after receiving 503 (Case 3). Warm restart is complete (~200–500ms). Worker-0 is back in pool.\n\nNote: X-Edge-Worker-Recovered is NOT set here because the worker is fully recovered and serving normally."
+          },
+          "response": [
+            {
+              "name": "200 OK — Recovered (after Retry-After wait)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 47\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 5 — 503 Budget Exceeded (Worker Quarantined)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Worker crashed 5+ times in 60s — budget exceeded. Supervisor quarantines the slot. No auto-restart until manual intervention.\n\nreason: budget_exceeded distinguishes this from a transient single-crash 503. Retry-After is omitted (or large) because recovery requires operator action."
+          },
+          "response": [
+            {
+              "name": "503 — Worker Quarantined (Budget Exceeded)",
+              "status": "Service Unavailable",
+              "code": 503,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Device-Status", "value": "faulted"}
+              ],
+              "body": "{\n  \"error\": \"no_workers_for_slot\",\n  \"reason\": \"budget_exceeded\",\n  \"worker_slot\": \"worker-0\",\n  \"model\": \"indic-tts-v3\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 — Deduplication (Idempotent Retries)",
+      "description": "Gateway deduplicates by request_id. Same request_id sent twice demonstrates at-most-once execution semantics.",
+      "item": [
+        {
+          "name": "Deduplicated Retry — In-Flight",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Client sends the same request_id while the original is still running (e.g., client timeout + retry pattern).\n\nGateway returns current state metadata without re-executing inference. No extra compute is charged."
+          },
+          "response": [
+            {
+              "name": "200 OK — Deduplicated (In-Flight State)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"}
+              ],
+              "body": "{\n  \"request_id\": \"req_7f3a9b\",\n  \"state\": \"running\",\n  \"worker_slot\": \"worker-1\",\n  \"retry_count\": 1,\n  \"deduplicated\": true\n}"
+            }
+          ]
+        },
+        {
+          "name": "Deduplicated Retry — Completed (Within 30s TTL)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\"temperature\": 0.7},\n  \"request_id\": \"{{requestId}}\"\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Client sends the same request_id after the original completed successfully (within 30s TTL). Gateway returns cached terminal metadata — inference is not re-executed."
+          },
+          "response": [
+            {
+              "name": "200 OK — Deduplicated (Cached Terminal Result)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"}
+              ],
+              "body": "{\n  \"result\": \"<same base64-encoded audio as original>\",\n  \"model\": \"indic-tts-v3\",\n  \"request_id\": \"req_7f3a9b\",\n  \"deduplicated\": true,\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 45\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

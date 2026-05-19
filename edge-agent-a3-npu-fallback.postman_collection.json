@@ -1,0 +1,371 @@
+{
+  "info": {
+    "_postman_id": "edge-agent-a3-npu-fallback",
+    "name": "Edge Agent — A3: Qualcomm NPU Failure & CPU Fallback",
+    "description": "Sarvam AI — Edge Agent Runtime — Part A §3: NPU failure handling on Windows ARM64 Snapdragon X Elite.\n\nAll scenarios cover the client-visible surface of an in-process NPU → CPU fallback. There is no process restart — the worker stays alive and switches execution providers internally.\n\nKey headers to observe:\n- X-Edge-Compute: npu | cpu | cpu-fallback\n- X-Edge-Latency-Factor: 1.0 (NPU) → ~3.2 (CPU)\n- X-Edge-Device-Status: healthy | degraded | unavailable\n- X-Edge-Estimated-Restore: seconds until next probe\n\nFolders:\n1. Baseline — normal NPU inference (reference)\n2. NPU Fallback Scenarios — all client-visible states during/after device fault\n3. Device Health Endpoint — polling /v1/health/devices\n4. NPU Restoration — first request after probe passes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8741",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "ek_live_your_key_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 — Baseline (NPU Healthy)",
+      "description": "Reference: normal inference when the Qualcomm NPU is fully operational.",
+      "item": [
+        {
+          "name": "TTS — Normal NPU Inference",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आप कैसे हैं?\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "NPU healthy — QNN EP serves the request directly. Latency ~35ms, X-Edge-Compute: npu, X-Edge-Latency-Factor: 1.0."
+          },
+          "response": [
+            {
+              "name": "200 OK — NPU (Healthy, Tier 0)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "npu"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"npu\",\n    \"tier\": 0,\n    \"latency_ms\": 35\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 — NPU Fallback Scenarios",
+      "description": "All client-visible outcomes when DXGI_ERROR_DEVICE_REMOVED fires. The worker stays alive — only the execution provider changes.",
+      "item": [
+        {
+          "name": "Case 1 — First Request During NPU Fault (200 OK, ~250ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आप कैसे हैं?\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "This is the request that triggers the fault.\n\nTimeline:\n- t=0ms: session.Run() returns DXGI_ERROR_DEVICE_REMOVED\n- t=1ms: Device Manager marks NPU as FAULTED\n- t=2ms: NPU session destroyed (npu_session.reset())\n- t=5-20ms: CPU session created (model already mmap'd)\n- t=20ms: Same request retried on CPU EP\n- t=70-270ms: CPU inference completes\n\nClient receives 200 OK — never sees the error. Worst-case latency: ~250ms (200ms swap + 50ms inference).\n\nX-Edge-Estimated-Restore: 30 means the next health probe fires in 30 seconds."
+          },
+          "response": [
+            {
+              "name": "200 OK — CPU Fallback (First Request, ~250ms worst-case)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "3.2"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "30"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 248\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 2 — Subsequent Request During CPU Fallback (Steady-State)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"मुझे कल दिल्ली जाना है।\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "NPU is already FAULTED and CPU session is already created (no swap overhead this time). Steady-state CPU fallback: ~50ms/token inference, no extra swap latency.\n\nX-Edge-Estimated-Restore decrements from previous response — now 22s until next probe."
+          },
+          "response": [
+            {
+              "name": "200 OK — CPU Fallback (Steady-State, ~112ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "3.1"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "22"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 112\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 3 — NMT Translation During CPU Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Hello, how are you?\",\n  \"params\": {\n    \"src_lang\": \"en\",\n    \"tgt_lang\": \"hi\"\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Batch translation (NMT) served via CPU fallback. NPU baseline ~80ms; CPU ~250ms (3.1× slowdown).\n\nShows that all model types degrade proportionally — not just TTS."
+          },
+          "response": [
+            {
+              "name": "200 OK — NMT Translation, CPU Fallback (~250ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "3.1"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "18"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"नमस्ते, आप कैसे हैं?\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 250\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 4 — 429 Backpressure (Queue Reduced During Fallback)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"एक और अनुरोध\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "During CPU fallback the scheduler scales the effective queue limit inversely with latency factor:\n\n  effective_limit = floor(64 / 3.0) = 21 slots\n  backpressure_at = floor(21 × 0.8) = 16 slots\n\nNormal-priority requests are rejected with 429 once the normal lane (16-slot fallback limit minus high-priority reservation) is exhausted. High-priority requests are still admitted.\n\nRetry-After: 2 — CPU drain rate is ~3× slower, so queue clears in a few seconds."
+          },
+          "response": [
+            {
+              "name": "429 — Backpressure (Normal Queue Exhausted During CPU Fallback)",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "Retry-After", "value": "2"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"}
+              ],
+              "body": "{\n  \"error\": \"queue_full\",\n  \"retry_after\": 2,\n  \"reason\": \"cpu_fallback_reduced_capacity\",\n  \"effective_queue_limit\": 21,\n  \"current_depth\": 17\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 5 — SSE Streaming During CPU Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"},
+              {"key": "Accept", "value": "text/event-stream", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"यह एक स्ट्रीमिंग परीक्षण है।\",\n  \"params\": {\n    \"temperature\": 0.7,\n    \"stream\": true\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Streaming (token-by-token) inference during CPU fallback.\n\nThe first frame in the stream is always a metadata frame containing degradation info. Subsequent frames are token events. The client can use the 'meta' frame to update a 'reduced performance' indicator before tokens start arriving.\n\nInter-token latency is ~3× higher than NPU baseline."
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE Stream (CPU Fallback, Meta Frame First)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "text/event-stream"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "15"}
+              ],
+              "body": "data: {\"type\": \"meta\", \"compute\": \"cpu-fallback\", \"tier\": 2, \"latency_factor\": 3.2, \"device_status\": \"degraded\"}\n\ndata: {\"type\": \"token\", \"text\": \"यह\"}\n\ndata: {\"type\": \"token\", \"text\": \" एक\"}\n\ndata: {\"type\": \"token\", \"text\": \" स्ट्रीमिंग\"}\n\ndata: {\"type\": \"done\", \"total_ms\": 650}\n\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 — Device Health Endpoint",
+      "description": "GET /v1/health/devices — poll device state. Useful for building client-side 'reduced performance' indicators and monitoring dashboards.",
+      "item": [
+        {
+          "name": "GET /v1/health/devices — NPU Faulted",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "NPU is FAULTED. Response shows:\n- state: faulted\n- reason: DXGI_ERROR_DEVICE_REMOVED\n- probe_attempt: 2 (second exponential backoff interval → 60s)\n- next_probe_in_seconds: 28 (remaining time)\n\nClient can use next_probe_in_seconds to set a 'estimated restoration' timer in the UI."
+          },
+          "response": [
+            {
+              "name": "200 OK — NPU Faulted, CPU Active",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"npu\": {\n    \"state\": \"faulted\",\n    \"since\": \"2025-01-15T10:23:45Z\",\n    \"reason\": \"DXGI_ERROR_DEVICE_REMOVED\",\n    \"next_probe_in_seconds\": 28,\n    \"probe_attempt\": 2\n  },\n  \"cpu\": {\n    \"state\": \"active\",\n    \"threads\": 8\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — NPU Probing",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "NPU is currently in the PROBING state — the Device Manager is running the three-part health check:\n1. D3D12CreateDevice with Qualcomm LUID\n2. Canary inference (~1ms model)\n3. Result validation vs known reference\n\nInference requests continue on CPU while the probe runs in the background. next_probe_in_seconds: 0 indicates probe is in progress now."
+          },
+          "response": [
+            {
+              "name": "200 OK — NPU Probing (Health Check In Progress)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"npu\": {\n    \"state\": \"probing\",\n    \"since\": \"2025-01-15T10:23:45Z\",\n    \"reason\": \"DXGI_ERROR_DEVICE_REMOVED\",\n    \"next_probe_in_seconds\": 0,\n    \"probe_attempt\": 2\n  },\n  \"cpu\": {\n    \"state\": \"active\",\n    \"threads\": 8\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — NPU Healthy (Restored)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "NPU probe passed all three checks. Device Manager transitioned to READY. CPU session destroyed, new NPU session created. Subsequent inference requests will use NPU again."
+          },
+          "response": [
+            {
+              "name": "200 OK — NPU Restored and Healthy",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"npu\": {\n    \"state\": \"active\",\n    \"restored_at\": \"2025-01-15T10:27:15Z\",\n    \"downtime_s\": 210,\n    \"probe_attempts\": 3\n  },\n  \"cpu\": {\n    \"state\": \"standby\",\n    \"threads\": 8\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 — NPU Restoration",
+      "description": "Requests served after the health probe passes and NPU is restored to READY state.",
+      "item": [
+        {
+          "name": "TTS — First Request After NPU Restored",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"एनपीयू वापस आ गया है।\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "NPU probe passed. Device Manager transitioned FAULTED → READY. Worker sent heartbeat with device: npu, latency_factor: 1.0. Scheduler restored queue limit to 64 slots and backpressure threshold to 51.\n\nThis request is served by the NPU again — X-Edge-Compute: npu, X-Edge-Device-Status: healthy. No X-Edge-Estimated-Restore (probe cycle not needed for healthy device)."
+          },
+          "response": [
+            {
+              "name": "200 OK — NPU Restored (Back to Tier 0)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "npu"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"npu\",\n    \"tier\": 0,\n    \"latency_ms\": 36\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

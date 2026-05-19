@@ -1,0 +1,91 @@
+<svg width="720" height="460" viewBox="0 0 720 460" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>Process Lifecycle State Machines</title>
+<desc>Per-process lifecycle states and transitions for all four Edge Agent processes, including restart policies and terminal conditions.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">PROCESS LIFECYCLE STATE MACHINES</text>
+
+<!-- ═══ GENERIC LIFECYCLE ═══ -->
+<text x="360" y="50" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">common state machine — all processes follow this pattern</text>
+
+<!-- INIT -->
+<rect x="60" y="66" width="70" height="28" rx="14" fill="none" stroke="rgba(222,220,209,0.3)" stroke-width="0.5" stroke-dasharray="4 3"/>
+<text x="95" y="84" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)">INIT</text>
+
+<line x1="130" y1="80" x2="168" y2="80" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="149" y="74" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.8">spawn</text>
+
+<!-- STARTING -->
+<rect x="170" y="66" width="86" height="28" rx="14" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="213" y="84" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(206,203,246)">STARTING</text>
+
+<line x1="256" y1="80" x2="294" y2="80" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="275" y="74" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(93,202,165)" opacity="0.6">ready</text>
+
+<!-- RUNNING -->
+<rect x="296" y="66" width="80" height="28" rx="14" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="336" y="84" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">RUNNING</text>
+
+<line x1="376" y1="80" x2="414" y2="80" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="395" y="74" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(200,80,70)" opacity="0.6">exit / crash</text>
+
+<!-- STOPPED -->
+<rect x="416" y="66" width="80" height="28" rx="14" fill="rgb(113,43,19)" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<text x="456" y="84" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(240,120,110)">STOPPED</text>
+
+<!-- Restart loop -->
+<path d="M456 94 L456 114 L213 114 L213 94" fill="none" stroke="rgb(175,169,236)" stroke-width="0.5" stroke-dasharray="4 3" marker-end="url(#arr)"/>
+<text x="335" y="110" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(175,169,236)" opacity="0.6">restart (if policy allows)</text>
+
+<!-- Terminal -->
+<line x1="496" y1="80" x2="536" y2="80" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+<rect x="538" y="66" width="88" height="28" rx="14" fill="none" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="4 3"/>
+<text x="582" y="84" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(200,80,70)" opacity="0.7">ABANDONED</text>
+<text x="582" y="104" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">budget exceeded</text>
+
+<!-- ═══ PER-PROCESS POLICIES ═══ -->
+<line x1="40" y1="136" x2="680" y2="136" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+<text x="360" y="156" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">PER-PROCESS RESTART POLICIES</text>
+
+<!-- Supervisor -->
+<rect x="40" y="172" width="8" height="52" rx="4" fill="rgb(175,169,236)" opacity="0.6"/>
+<text x="60" y="190" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(206,203,246)">edge-supervisor</text>
+<text x="60" y="206" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Policy: external (system tray watchdog)</text>
+<text x="60" y="220" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.75">Not self-restartable. OS-level launchd/Task Scheduler monitors health socket.</text>
+
+<line x1="40" y1="232" x2="680" y2="232" stroke="rgba(222,220,209,0.06)" stroke-width="0.5"/>
+
+<!-- API Gateway -->
+<rect x="40" y="240" width="8" height="52" rx="4" fill="rgb(93,202,165)" opacity="0.6"/>
+<text x="60" y="258" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(159,225,203)">edge-api</text>
+<text x="250" y="258" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(93,202,165)" opacity="0.6">policy: always</text>
+<text x="60" y="274" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Restart unconditionally on any exit. Budget: 5/60s.</text>
+<text x="60" y="288" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.75">Rationale: API must always serve. Stateless — restart is safe.</text>
+
+<line x1="40" y1="300" x2="680" y2="300" stroke="rgba(222,220,209,0.06)" stroke-width="0.5"/>
+
+<!-- Workers -->
+<rect x="40" y="308" width="8" height="52" rx="4" fill="rgb(240,153,123)" opacity="0.6"/>
+<text x="60" y="326" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(245,196,179)">edge-worker-{N}</text>
+<text x="250" y="326" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(240,153,123)" opacity="0.6">policy: on-failure</text>
+<text x="60" y="342" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Restart only on non-zero exit code. Graceful shutdown (exit 0) = stay dead. Budget: 5/60s.</text>
+<text x="60" y="356" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.75">Rationale: segfaults (0xC0000005) are transient; repeated crashes = quarantine worker slot.</text>
+
+<line x1="40" y1="368" x2="680" y2="368" stroke="rgba(222,220,209,0.06)" stroke-width="0.5"/>
+
+<!-- Model Manager -->
+<rect x="40" y="376" width="8" height="52" rx="4" fill="rgb(194,192,182)" opacity="0.65"/>
+<text x="60" y="394" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(250,249,245)">edge-store</text>
+<text x="250" y="394" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(194,192,182)" opacity="0.6">policy: on-demand</text>
+<text x="60" y="410" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Not restarted immediately. Re-spawned lazily on next model operation. Budget: 3/60s.</text>
+<text x="60" y="424" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.75">Rationale: model ops are rare. Aggressive restart wastes resources for a sleeping process.</text>
+
+<!-- Footer -->
+<text x="360" y="452" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.65">Budget exceeded → ABANDONED state → health event emitted → manual intervention or full agent restart required.</text>
+</svg>

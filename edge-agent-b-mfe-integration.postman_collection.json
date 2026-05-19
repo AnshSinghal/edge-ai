@@ -1,0 +1,545 @@
+{
+  "info": {
+    "name": "Edge Agent — Part B: MFE Integration",
+    "description": "Part B §1 — Micro-Frontend Integration Architecture. All requests go through the shell's EdgeAgentService. MFEs are represented by the X-Caller-Id / caller field. Base URL: http://127.0.0.1:8741",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8741", "type": "string" },
+    { "key": "apiKey", "value": "ek_live_your_key_here", "type": "string" }
+  ],
+  "item": [
+    {
+      "name": "1 — Baseline (Connected, Tier 0)",
+      "description": "Normal healthy operation. Both MFEs get tier-0 ANE results. Shell dispatches immediately — no queuing or degradation.",
+      "item": [
+        {
+          "name": "Document Q&A — NMT inference (tier 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_baseline_doc_qa_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Hello, how are you today?\",\n  \"params\": {\n    \"source_lang\": \"en\",\n    \"target_lang\": \"hi\"\n  },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Simulates DocumentQA MFE calling useEdgeAgent().inference(). Expect X-Edge-Tier: 0, X-Edge-Compute: ane. Shell maps this to { status: 'ok', data, meta }."
+          },
+          "response": [
+            {
+              "name": "200 OK — tier 0, ANE",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Compute", "value": "ane" },
+                { "key": "X-Edge-Tier", "value": "0" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" },
+                { "key": "X-Edge-Latency-Factor", "value": "1.0" },
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"result\": { \"text\": \"नमस्ते, आप आज कैसे हैं?\" },\n  \"_meta\": { \"compute\": \"ane\", \"tier\": 0, \"latency_ms\": 38, \"device_status\": \"healthy\" }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Meeting Summariser — ASR stream request (tier 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_baseline_mtg_01" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/stream", "host": ["{{baseUrl}}"], "path": ["v1", "stream"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<base64_audio_chunk>\",\n  \"priority\": \"high\",\n  \"latency_critical\": true,\n  \"caller\": \"meeting-sum\"\n}"
+            },
+            "description": "Simulates MeetingSummariser MFE opening a stream. High-priority caller. Shell exposes this as AsyncGenerator<StreamChunk>. SSE wire format shown in example response."
+          },
+          "response": [
+            {
+              "name": "200 SSE stream — tier 0",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "text/event-stream" },
+                { "key": "X-Edge-Tier", "value": "0" },
+                { "key": "X-Edge-Compute", "value": "ane" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" }
+              ],
+              "body": "{\"type\":\"meta\",\"compute\":\"ane\",\"tier\":0}\n{\"type\":\"token\",\"text\":\"आज\"}\n{\"type\":\"token\",\"text\":\" की बैठक\"}\n{\"type\":\"token\",\"text\":\" में\"}\n{\"type\":\"done\",\"total_ms\":295}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 — MFE Request Routing & Fair-Share Queue",
+      "description": "Tests shell-level fair-share scheduling. Per-MFE quotas (4 concurrent each), priority ordering, and caller identification.",
+      "item": [
+        {
+          "name": "High-priority Meeting Sum request (skips queue over Doc Q&A)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_routing_high_01" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<audio_chunk>\",\n  \"priority\": \"high\",\n  \"latency_critical\": true,\n  \"caller\": \"meeting-sum\"\n}"
+            },
+            "description": "Shell priorityMap: meeting-sum → high. When shell queue has both MFEs waiting, this request dispatches before doc-qa normal-priority requests. Use alongside the normal-priority doc-qa request to observe ordering."
+          },
+          "response": []
+        },
+        {
+          "name": "Normal-priority Doc Q&A request (yields to Meeting Sum)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_routing_normal_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Please summarise this document.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Shell priorityMap: doc-qa → normal. Shell queues this behind any high-priority meeting-sum requests. Anti-starvation aging ensures it eventually dispatches."
+          },
+          "response": []
+        },
+        {
+          "name": "Per-MFE quota enforcement — 5th concurrent Doc Q&A request",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_routing_quota_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"5th concurrent request — exceeds per-MFE quota of 4\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "FairShareConfig.perCallerMax = 4. When doc-qa already has 4 in-flight, the shell queues this locally (not sent to agent). MFE sees longer load time, not a 429. Shell emits: { type: 'caller:request-queued', caller: 'doc-qa', position: 1, reason: 'quota_exceeded' }"
+          },
+          "response": [
+            {
+              "name": "Shell-queued — caller:request-queued event emitted",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// Shell event bus (not HTTP):\n{ \"type\": \"caller:request-queued\", \"caller\": \"doc-qa\", \"request_id\": \"req_routing_quota_01\", \"queue_position\": 1, \"reason\": \"quota_exceeded\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 — Degraded Mode (Tier 1–2)",
+      "description": "Shell parses X-Edge-Tier from responses and emits device:status-changed events. MFEs receive { status: 'degraded' } results — still valid, just slower.",
+      "item": [
+        {
+          "name": "Tier 1 inference — GPU fallback (metal-gpu)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_degraded_tier1_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Translate this paragraph.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent responds with X-Edge-Tier: 1 (ANE faulted, Metal GPU active). Shell transitions EdgeAgentService state to DEGRADED. Emits device:status-changed. Returns { status: 'degraded', degradation: { reason: 'ane_faulted', latency_factor: 1.8 } } to MFE."
+          },
+          "response": [
+            {
+              "name": "200 — tier 1 degraded (metal-gpu)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Compute", "value": "metal-gpu" },
+                { "key": "X-Edge-Tier", "value": "1" },
+                { "key": "X-Edge-Device-Status", "value": "degraded" },
+                { "key": "X-Edge-Latency-Factor", "value": "1.8" }
+              ],
+              "body": "{\n  \"result\": { \"text\": \"इस अनुच्छेद का अनुवाद करें।\" },\n  \"_meta\": {\n    \"compute\": \"metal-gpu\",\n    \"tier\": 1,\n    \"latency_ms\": 94,\n    \"device_status\": \"degraded\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Tier 2 inference — CPU fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_degraded_tier2_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Translate this paragraph — CPU path.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Both ANE and GPU faulted. Agent falls back to CPU. Shell emits device:status-changed with tier: 2. MFE receives { status: 'degraded', degradation: { reason: 'ane_and_gpu_faulted', latency_factor: 4.4 } }."
+          },
+          "response": [
+            {
+              "name": "200 — tier 2 critical (cpu-fallback)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Compute", "value": "cpu-fallback" },
+                { "key": "X-Edge-Tier", "value": "2" },
+                { "key": "X-Edge-Device-Status", "value": "critical" },
+                { "key": "X-Edge-Latency-Factor", "value": "4.4" }
+              ],
+              "body": "{\n  \"result\": { \"text\": \"इस अनुच्छेद का अनुवाद करें।\" },\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 185,\n    \"device_status\": \"critical\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "SSE stream with meta frame during degraded mode",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_degraded_stream_01" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/stream", "host": ["{{baseUrl}}"], "path": ["v1", "stream"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<audio_chunk>\",\n  \"priority\": \"high\",\n  \"caller\": \"meeting-sum\"\n}"
+            },
+            "description": "ASR stream during tier-1 degradation. Meta frame includes compute and tier. Shell still yields valid StreamChunks to MFE. MeetingSummariser shows 'Transcription may be delayed' warning."
+          },
+          "response": [
+            {
+              "name": "200 SSE — degraded tier 1 stream",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "text/event-stream" },
+                { "key": "X-Edge-Tier", "value": "1" },
+                { "key": "X-Edge-Compute", "value": "metal-gpu" },
+                { "key": "X-Edge-Latency-Factor", "value": "1.8" }
+              ],
+              "body": "{\"type\":\"meta\",\"compute\":\"metal-gpu\",\"tier\":1,\"latency_factor\":1.8}\n{\"type\":\"token\",\"text\":\"आज\"}\n{\"type\":\"token\",\"text\":\" की\"}\n{\"type\":\"done\",\"total_ms\":540}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 — Connection Recovery",
+      "description": "Shell detects ECONNREFUSED / EPIPE, transitions to RECONNECTING, queues incoming MFE requests, drains queue on restore. MFEs see loading state, not errors.",
+      "item": [
+        {
+          "name": "Request during outage — agent down (ECONNREFUSED)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_recovery_down_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"This request arrives while the agent is down.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent is not running. Shell gets ECONNREFUSED. Transitions: CONNECTED → DISCONNECTED → RECONNECTING. Emits connection:lost. This request is queued locally (not rejected). Shell emits connection:restored when agent comes back; original promise resolves."
+          },
+          "response": [
+            {
+              "name": "Shell: connection:lost + request queued (no HTTP response yet)",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// Shell event bus on ECONNREFUSED:\n{ \"type\": \"connection:lost\", \"timestamp\": \"2025-01-15T10:23:45Z\" }\n// Request queued — MFE sees loading state\n// After reconnect (1s backoff):\n{ \"type\": \"connection:restored\", \"downtime_ms\": 1050 }\n// Promise resolves:\n{ \"status\": \"ok\", \"data\": { \"text\": \"...\" }, \"meta\": { \"compute\": \"ane\", \"tier\": 0, \"latency_ms\": 45 } }"
+            }
+          ]
+        },
+        {
+          "name": "503 + Retry-After — worker recovering, shell auto-retries",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_recovery_503_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Worker is restarting, shell should auto-retry.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent returns 503 (worker crash in progress). Shell honors Retry-After: 1, waits 1 second, retries automatically (max 3 attempts). Same X-Request-Id reused for idempotency. MFE sees loading state throughout, not an error. If all 3 retries fail, MFE receives { status: 'error', code: 'no_workers' }."
+          },
+          "response": [
+            {
+              "name": "503 Service Unavailable — worker crash",
+              "status": "Service Unavailable",
+              "code": 503,
+              "header": [
+                { "key": "Retry-After", "value": "1" },
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{ \"error\": \"no_workers_available\", \"retry_after\": 1 }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 — Fair-Share Queue & Backpressure",
+      "description": "Shell absorbs 429s from the agent. MFEs never see backpressure as errors — they see longer load times. Shell temporarily reduces maxConcurrent from 8 to 4.",
+      "item": [
+        {
+          "name": "429 Too Many Requests — shell absorbs, MFE unaffected",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_bp_429_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Batch request — queue is full.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent queue at 64/64. Returns 429. Shell: (1) pauses dispatch loop, (2) honors Retry-After: 2, (3) reduces maxConcurrent 8→4, (4) queues new MFE requests locally. Emits queue:backpressure event. MFE sees extended loading, not a 429 error."
+          },
+          "response": [
+            {
+              "name": "429 Too Many Requests (shell receives, MFE never sees)",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                { "key": "Retry-After", "value": "2" },
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{ \"error\": \"queue_full\", \"retry_after\": 2 }"
+            }
+          ]
+        },
+        {
+          "name": "Shell queue at capacity — 9th concurrent request queued locally",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_bp_localq_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"9th concurrent request — exceeds shell maxConcurrent of 8.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "FairShareQueue.maxConcurrent = 8. 8 requests already in-flight. This 9th request is held in the shell's local queue. When any in-flight slot frees, the queue drains in priority order. Agent's 64-slot queue is never saturated by this tab."
+          },
+          "response": [
+            {
+              "name": "Shell-queued locally — caller:request-queued event",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// Shell event bus:\n{ \"type\": \"caller:request-queued\", \"caller\": \"doc-qa\", \"request_id\": \"req_bp_localq_01\", \"queue_position\": 1, \"reason\": \"max_concurrent_reached\" }"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 — Device Health Endpoint",
+      "description": "Shell polls GET /v1/health/devices every 10s. Cached result shared with all MFEs. MFEs subscribe to derived events, never poll themselves.",
+      "item": [
+        {
+          "name": "GET /v1/health/devices — all healthy (tier 0)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/health/devices", "host": ["{{baseUrl}}"], "path": ["v1", "health", "devices"] },
+            "description": "Shell polls this endpoint. All devices healthy at tier 0. No device:status-changed event emitted — state unchanged. MFEs continue normal operation."
+          },
+          "response": [
+            {
+              "name": "200 — all devices healthy",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Tier", "value": "0" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" }
+              ],
+              "body": "{\n  \"status\": \"healthy\",\n  \"tier\": 0,\n  \"devices\": [\n    { \"id\": \"ane\",       \"status\": \"active\",   \"compute\": \"ane\",       \"latency_factor\": 1.0 },\n    { \"id\": \"metal-gpu\", \"status\": \"standby\",  \"compute\": \"metal-gpu\", \"latency_factor\": 1.8 },\n    { \"id\": \"cpu\",       \"status\": \"standby\",  \"compute\": \"cpu\",       \"latency_factor\": 4.4 }\n  ]\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — ANE faulted, GPU active",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/health/devices", "host": ["{{baseUrl}}"], "path": ["v1", "health", "devices"] },
+            "description": "ANE faulted, GPU now active. Shell detects tier change (0→1). Updates cached device status. Emits: { type: 'device:status-changed', tier: 1, compute: 'metal-gpu', latency_factor: 1.8 }. Both MFEs receive the event simultaneously."
+          },
+          "response": [
+            {
+              "name": "200 — ANE faulted, tier 1",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Tier", "value": "1" },
+                { "key": "X-Edge-Device-Status", "value": "degraded" }
+              ],
+              "body": "{\n  \"status\": \"degraded\",\n  \"tier\": 1,\n  \"devices\": [\n    { \"id\": \"ane\",       \"status\": \"faulted\",  \"compute\": \"ane\",       \"latency_factor\": null },\n    { \"id\": \"metal-gpu\", \"status\": \"active\",   \"compute\": \"metal-gpu\", \"latency_factor\": 1.8 },\n    { \"id\": \"cpu\",       \"status\": \"standby\",  \"compute\": \"cpu\",       \"latency_factor\": 4.4 }\n  ],\n  \"estimated_restore_s\": 28\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — all tiers restored (tier 0)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/health/devices", "host": ["{{baseUrl}}"], "path": ["v1", "health", "devices"] },
+            "description": "ANE recovered. Shell detects tier return to 0. Transitions EdgeAgentService: DEGRADED → CONNECTED. Emits: { type: 'device:restored', tier: 0, compute: 'ane' }. MFEs hide degradation banners."
+          },
+          "response": [
+            {
+              "name": "200 — all devices restored",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "X-Edge-Tier", "value": "0" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" }
+              ],
+              "body": "{\n  \"status\": \"healthy\",\n  \"tier\": 0,\n  \"devices\": [\n    { \"id\": \"ane\",       \"status\": \"active\",  \"compute\": \"ane\",       \"latency_factor\": 1.0 },\n    { \"id\": \"metal-gpu\", \"status\": \"standby\", \"compute\": \"metal-gpu\", \"latency_factor\": 1.8 },\n    { \"id\": \"cpu\",       \"status\": \"standby\", \"compute\": \"cpu\",       \"latency_factor\": 4.4 }\n  ]\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7 — Failure Scenarios",
+      "description": "Error normalization — shell returns { status: 'error', code } typed results. MFEs never see raw HTTP errors, connection exceptions, or agent internals.",
+      "item": [
+        {
+          "name": "Request timeout — { status: 'error', code: 'timeout' }",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_fail_timeout_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Request that will time out.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent accepts the request but exceeds the shell-side timeout (default 30s). Shell's AbortController fires, cancels the in-flight request. Returns typed error to MFE — no throw, no unhandled rejection."
+          },
+          "response": [
+            {
+              "name": "Shell typed error — timeout",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// MFE receives this from useEdgeAgent().inference() — not an HTTP response:\n{ \"status\": \"error\", \"code\": \"timeout\", \"message\": \"Request exceeded 30s timeout.\", \"retrying\": false }"
+            }
+          ]
+        },
+        {
+          "name": "Agent down >30s — { status: 'error', code: 'agent_unavailable' }",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_fail_unavail_01" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Request queued during prolonged outage.\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" },\n  \"priority\": \"normal\",\n  \"caller\": \"doc-qa\"\n}"
+            },
+            "description": "Agent has been down for >30 seconds. Shell's queue timer expires — queued requests are failed. Returns agent_unavailable. MFE shows offline UI with 'Edge Agent not available' message."
+          },
+          "response": [
+            {
+              "name": "Shell typed error — agent_unavailable (queue timeout)",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// MFE receives:\n{ \"status\": \"error\", \"code\": \"agent_unavailable\", \"message\": \"Agent unreachable after 30s. Ensure Edge Agent is running.\", \"retrying\": false }"
+            }
+          ]
+        },
+        {
+          "name": "MFE unmount — pending requests cancelled (no orphans)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Request-Id", "value": "req_fail_unmount_01" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<audio_chunk_being_processed>\",\n  \"priority\": \"high\",\n  \"caller\": \"meeting-sum\"\n}"
+            },
+            "description": "MeetingSummariser unmounts while this request is in-flight. Shell detects React component unmount, fires AbortController for all requests with caller='meeting-sum'. In-flight request is cancelled (frees one slot). Shell emits caller:requests-cancelled. DocumentQA is completely unaffected."
+          },
+          "response": [
+            {
+              "name": "Shell event on MFE unmount",
+              "status": "OK",
+              "code": 200,
+              "header": [],
+              "body": "// Shell event bus on MFE unmount:\n{ \"type\": \"caller:requests-cancelled\", \"caller\": \"meeting-sum\", \"count\": 1, \"reason\": \"unmount\" }\n// Agent receives cancellation signal. Slot freed. doc-qa requests unaffected."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

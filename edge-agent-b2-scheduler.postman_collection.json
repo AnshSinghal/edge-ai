@@ -1,0 +1,534 @@
+{
+  "info": {
+    "name": "Edge Agent — Part B §2: Client-Side Request Scheduler",
+    "description": "Validates scheduler behaviour: priority queue (P0/P1/P2 WFQ), per-MFE fairness quotas, P0→P2 preemption, AIMD backpressure recovery, cancellation/timeout propagation, starvation prevention, and recovery sequences. All requests target the edge gateway via the shell's EdgeAgentService. Base URL: http://127.0.0.1:8741.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://127.0.0.1:8741" },
+    { "key": "apiKey",  "value": "ek_live_your_key_here" }
+  ],
+  "item": [
+    {
+      "name": "Folder 1 — Normal Dispatch (IDLE → DISPATCHING)",
+      "description": "Scheduler is IDLE. Each request gets an immediate slot (0 queued_ms). Tests P0 and P1 priority tags are forwarded correctly.",
+      "item": [
+        {
+          "name": "P0 Critical — Meeting Summariser ASR (immediate slot)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_001" },
+              { "key": "X-Caller-Id",    "value": "meeting-sum" },
+              { "key": "X-Priority",     "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<base64-audio-chunk>\",\n  \"params\": { \"language\": \"hi\", \"task\": \"transcribe\" },\n  \"stream\": false\n}"
+            },
+            "description": "P0 critical request from meeting-sum. Scheduler: IDLE → DISPATCHING. Slot 0 acquired immediately. Expected: status=ok, meta.queued_ms=0."
+          },
+          "response": []
+        },
+        {
+          "name": "P1 Normal — Document Q&A NMT (immediate slot)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_002" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Hello, how are you?\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P1 normal request from doc-qa. Scheduler: DISPATCHING (slot 1). Expected: status=ok, meta.queued_ms=0."
+          },
+          "response": []
+        },
+        {
+          "name": "P2 Background — Doc Q&A Prefetch (immediate slot, all free)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_003" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Next page text for prefetch\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P2 background prefetch. All 4 slots free → immediate dispatch. Timeout: 60s (not 30s). Expected: status=ok, meta.queued_ms=0."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 2 — WFQ Priority Ordering (Concurrent P0+P1+P2)",
+      "description": "All 3 priority levels submitted simultaneously. WFQ dispatches in 4:2:1 ratio. Validates that P0 gets preference without starving P2.",
+      "item": [
+        {
+          "name": "WFQ Mix — P0 critical (first slot, weight 4)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_010" },
+              { "key": "X-Caller-Id",    "value": "meeting-sum" },
+              { "key": "X-Priority",     "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<audio-live-chunk>\",\n  \"params\": { \"language\": \"hi\" }\n}"
+            },
+            "description": "P0 weight=4. Highest virtual_finish_time priority. Dispatched first when all lanes compete."
+          },
+          "response": []
+        },
+        {
+          "name": "WFQ Mix — P1 normal (second slot, weight 2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_011" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"User clicked Translate\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P1 weight=2. Gets 2/7 of dispatches. queued_ms > 0 if slots momentarily occupied."
+          },
+          "response": []
+        },
+        {
+          "name": "WFQ Mix — P2 background (queued, weight 1 — but still served)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_012" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Speculative prefetch for page 3\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P2 weight=1. Gets 1/7 of dispatches. WFQ guarantees it is eventually served. Anti-starvation guard: forced after 8 consecutive P0/P1 dispatches."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 3 — Per-MFE Fair-Share (Quota Enforcement)",
+      "description": "With 2 active MFEs, each gets floor(4/2)=2 concurrent slots. A third concurrent request from the same MFE enters the local queue until a slot is freed.",
+      "item": [
+        {
+          "name": "Doc Q&A req 1 — in-flight (slot 0, within quota 1/2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_020" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Page 1 translation\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "doc-qa first request. callerInFlight[doc-qa]=1, quota=2. Dispatched."
+          },
+          "response": []
+        },
+        {
+          "name": "Doc Q&A req 2 — in-flight (slot 1, at quota 2/2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_021" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Page 2 translation\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "doc-qa second request. callerInFlight[doc-qa]=2, quota=2. Still dispatched."
+          },
+          "response": []
+        },
+        {
+          "name": "Doc Q&A req 3 — QUEUED (quota exceeded, 2/2 in-flight)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_022" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Page 3 translation — will queue\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "doc-qa third request. canDispatch()=false — per-MFE quota hit (2/2). Enqueued. Scheduler emits scheduler:queued. Dispatched when doc-qa slot freed. Expected: status=ok, meta.queued_ms>0."
+          },
+          "response": []
+        },
+        {
+          "name": "Meeting Summariser — gets its own quota slots (slots 2+3)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_023" },
+              { "key": "X-Caller-Id",    "value": "meeting-sum" },
+              { "key": "X-Priority",     "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<audio-chunk-live>\",\n  \"params\": { \"language\": \"hi\" }\n}"
+            },
+            "description": "meeting-sum gets its own quota (callerInFlight[meeting-sum]=0, quota=2). Dispatched even though doc-qa slots are full. Fair-share working correctly."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 4 — P0 Preemption of P2 (All Slots Busy with Background)",
+      "description": "4 P2 background slots in-flight. P0 critical arrives. Scheduler preempts youngest P2, re-queues it at head of P2 lane, dispatches P0.",
+      "item": [
+        {
+          "name": "4× P2 background — fill all slots",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_030" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Prefetch batch 1 of 4\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Send 4 copies of this request to fill slots 0-3 with P2 background work. Once all 4 slots occupied, send the P0 preemption request below."
+          },
+          "response": []
+        },
+        {
+          "name": "P0 critical arrives — preempts youngest P2 (scheduler:preempted event)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_031" },
+              { "key": "X-Caller-Id",    "value": "meeting-sum" },
+              { "key": "X-Priority",     "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-asr-v1\",\n  \"input\": \"<urgent-audio-chunk>\",\n  \"params\": { \"language\": \"hi\" }\n}"
+            },
+            "description": "P0 critical when 4/4 P2 in-flight. maybePreempt() fires: youngest P2 aborted via AbortController, re-queued at head of P2 lane, P0 dispatched. Expected events: scheduler:preempted{victim_requeued:true}, then this request resolves status=ok."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 5 — Backpressure: AIMD Recovery (429 → 200)",
+      "description": "Agent returns 429 (other clients consuming capacity). Scheduler halves maxConcurrent (AIMD), pauses, resumes, then restores incrementally on 200s.",
+      "item": [
+        {
+          "name": "Agent 429 — maxConcurrent halved 4→2 (AIMD multiplicative decrease)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_040" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" },
+              { "key": "X-Simulate",     "value": "backpressure-429" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Backpressure test request\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Agent responds 429 Retry-After:2. Scheduler: maxConcurrent 4→2, dispatch paused. MFE does NOT see 429 — request stays in local queue. Scheduler emits scheduler:backpressure{max_reduced_to:2, retry_after_ms:2000}."
+          },
+          "response": []
+        },
+        {
+          "name": "Post-backpressure 200 OK — additive increase (+1 per success)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_041" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Recovery request after backpressure\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "After Retry-After expires, scheduler resumes at maxConcurrent=2. This 200 OK triggers additive increase: 2→3. Send 2 more to restore to 4. MFE sees status=ok with queued_ms reflecting the backpressure window."
+          },
+          "response": []
+        },
+        {
+          "name": "Queue full (32/32) — last-resort reject: error:queue_full",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_042" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"33rd request — queue is at capacity\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Total queue depth=32 (max). New request rejected immediately. Expected: {status:'error', code:'queue_full'}. MFE shows 'System busy — please try again'."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 6 — Cancellation & Timeout",
+      "description": "AbortController chain: MFE signal → scheduler controller → fetch(). Timeout covers queue wait + inflight (total 30s critical/normal, 60s background).",
+      "item": [
+        {
+          "name": "Request timeout — 30s total (queue+inflight): error:timeout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_050" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" },
+              { "key": "X-Simulate",     "value": "stall-response" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Request that will stall past 30s\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Agent accepts connection but doesn't respond. After 30s total (queued+inflight), scheduler fires timeout: abort → slot freed → {status:'error', code:'timeout', retrying:false}. MFE shows retry button."
+          },
+          "response": []
+        },
+        {
+          "name": "MFE unmount cancellation — all caller requests aborted",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_051" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" },
+              { "key": "X-Abort-Caller", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Request in-flight when MFE unmounts\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Simulates React cleanup calling cancelByCaller('doc-qa'). All in-flight doc-qa requests aborted via AbortController (TCP RST). Agent frees its internal slot. Slots released immediately. Other MFEs unaffected."
+          },
+          "response": []
+        },
+        {
+          "name": "Background request timeout — 60s (longer allowance for prefetch)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_052" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" },
+              { "key": "X-Simulate",     "value": "stall-response" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Background prefetch — 60s timeout\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P2 background timeout=60s (not 30s). No user waiting so longer tolerance. Still bounded to prevent resource leaks. Expected after 60s: {status:'error', code:'timeout'}."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 7 — Starvation Prevention",
+      "description": "Three starvation defenses: WFQ weights, 8:1 hard guard, age-based promotion. Tests that P2 is served even under continuous P0 load.",
+      "item": [
+        {
+          "name": "Age-based promotion — P2 queued >10s → promoted to P1",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_060" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" },
+              { "key": "X-Enqueued-Age", "value": "10500" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Stale P2 request — eligible for promotion\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P2 request aged >10s. maybePromote() fires on next dequeue cycle: priority P2→P1. If further delayed past 20s total, promoted to P0. Scheduler emits scheduler:promoted{from:'background', to:'normal', wait_ms:10500}."
+          },
+          "response": []
+        },
+        {
+          "name": "Hard anti-starvation guard — P2 forced after 8 consecutive P0/P1",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_061" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "background" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"P2 waiting — hard guard should force dispatch at 9th cycle\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "P2 request queued while 8 consecutive P0/P1 dispatches occur. consecutiveHighPriority reaches 8. Next dequeue: guard fires, P2 forced to front regardless of WFQ virtual time. Guarantees at least 1 P2 per 9 dispatches."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Folder 8 — Recovery Sequences",
+      "description": "Agent disconnect (SUSPENDED), timeout cascade (stalled agent), and backpressure recovery. Scheduler self-heals without manual restart.",
+      "item": [
+        {
+          "name": "ECONNREFUSED — scheduler enters SUSPENDED, queues incoming (30s timeout)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_070" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" },
+              { "key": "X-Simulate",     "value": "econnrefused" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Request submitted while agent is down\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "ECONNREFUSED: in-flight requests aborted → {error:'disconnected'}. New requests enqueued (not rejected) with 30s timeout starting NOW. Health-check polls /v1/health every 2s. On reconnect: DRAINING → rapid WFQ dispatch. MFE sees 'AI engine offline'."
+          },
+          "response": []
+        },
+        {
+          "name": "Agent reconnected — DRAINING state, queue flushed",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id",    "value": "shell" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/health/devices", "host": ["{{baseUrl}}"], "path": ["v1", "health", "devices"] },
+            "description": "Health-check succeeds after agent restart. Emits connection:restored. Scheduler: SUSPENDED → DRAINING. Queued requests dispatched in WFQ order, slots fill 0→4. DRAINING → DISPATCHING when queue empty."
+          },
+          "response": []
+        },
+        {
+          "name": "Timeout cascade — stalled agent, staggered slot recovery",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type",   "value": "application/json" },
+              { "key": "X-Request-Id",   "value": "req_b2_072" },
+              { "key": "X-Caller-Id",    "value": "doc-qa" },
+              { "key": "X-Priority",     "value": "normal" },
+              { "key": "X-Simulate",     "value": "stall-all-slots" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"One of 4 stalled requests\",\n  \"params\": { \"source_lang\": \"en\", \"target_lang\": \"hi\" }\n}"
+            },
+            "description": "Agent stalls (accepts TCP, no response). 4 in-flight requests timeout at staggered intervals (t+28s, t+29s, t+30s, t+30s) because they were dispatched at different times. Prevents thundering herd. Each freed slot immediately dispatches next queued request."
+          },
+          "response": []
+        },
+        {
+          "name": "Sweep timer — force-free slot held >60s (leak safety net)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization",  "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id",    "value": "shell" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/health/devices", "host": ["{{baseUrl}}"], "path": ["v1", "health", "devices"] },
+            "description": "60s setInterval sweeps inFlight map. Any slot held >60s aborted: {status:'error', code:'slot_leak_recovery'}. Catches browser timer throttling in background tabs. This health poll triggers after the sweep cycle to confirm slot count is correct."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

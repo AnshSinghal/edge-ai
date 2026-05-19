@@ -1,0 +1,116 @@
+<svg width="720" height="520" viewBox="0 0 720 520" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>MFE Failure Handling — Shell Service Layer</title>
+<desc>Decision tree for failure handling at the shell service layer: connection loss, agent down, degraded performance, request timeout, and MFE unmount scenarios.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">MFE FAILURE HANDLING — SHELL SERVICE LAYER</text>
+<text x="360" y="36" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">centralized error handling · retry logic · MFE isolation · graceful degradation</text>
+
+<!-- ═══ FAILURE SCENARIOS ═══ -->
+<!-- Central decision node -->
+<rect x="270" y="56" width="180" height="36" rx="6" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="360" y="78" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(159,225,203)">EdgeAgentService detects error</text>
+
+<!-- Branch lines -->
+<line x1="270" y1="74" x2="90" y2="130" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+<line x1="316" y1="92" x2="250" y2="130" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+<line x1="404" y1="92" x2="470" y2="130" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+<line x1="450" y1="74" x2="630" y2="130" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Scenario 1: Connection lost -->
+<rect x="40" y="132" width="130" height="70" rx="6" fill="rgb(38,38,36)" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<text x="105" y="150" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(200,80,70)">Connection Lost</text>
+<text x="105" y="166" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">ECONNREFUSED</text>
+<text x="105" y="180" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">EPIPE / close</text>
+<text x="105" y="192" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(200,80,70)" opacity="0.6">agent not running</text>
+
+<!-- Scenario 2: 503 no workers -->
+<rect x="190" y="132" width="130" height="70" rx="6" fill="rgb(38,38,36)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="255" y="150" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(240,153,123)">503 No Workers</text>
+<text x="255" y="166" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Retry-After: 1</text>
+<text x="255" y="180" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">worker crash</text>
+<text x="255" y="192" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(240,153,123)" opacity="0.6">transient — auto-recover</text>
+
+<!-- Scenario 3: Degraded tier -->
+<rect x="410" y="132" width="130" height="70" rx="6" fill="rgb(38,38,36)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="475" y="150" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(175,169,236)">Degraded Tier</text>
+<text x="475" y="166" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">X-Edge-Tier: 2</text>
+<text x="475" y="180" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">cpu-fallback</text>
+<text x="475" y="192" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(175,169,236)" opacity="0.6">200 OK — slower</text>
+
+<!-- Scenario 4: 429 queue full -->
+<rect x="570" y="132" width="120" height="70" rx="6" fill="rgb(38,38,36)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="630" y="150" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(240,153,123)">429 Queue Full</text>
+<text x="630" y="166" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Retry-After: 2</text>
+<text x="630" y="180" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">backpressure</text>
+<text x="630" y="192" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(240,153,123)" opacity="0.6">MFEs competing</text>
+
+<!-- ═══ SERVICE ACTIONS ═══ -->
+<line x1="40" y1="224" x2="680" y2="224" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+<text x="360" y="244" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">SERVICE ACTIONS</text>
+
+<!-- Action 1: Reconnect -->
+<line x1="105" y1="202" x2="105" y2="262" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<rect x="40" y="264" width="130" height="78" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<text x="105" y="280" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)" opacity="0.7">Reconnect loop</text>
+<text x="105" y="296" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">1s, 2s, 4s, 8s cap</text>
+<text x="105" y="312" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">emit connection:lost</text>
+<text x="105" y="326" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">MFEs show offline UI</text>
+
+<!-- Action 2: Auto-retry -->
+<line x1="255" y1="202" x2="255" y2="262" stroke="rgb(240,153,123)" stroke-width="0.5" marker-end="url(#arr)"/>
+<rect x="190" y="264" width="130" height="78" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<text x="255" y="280" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)" opacity="0.7">Auto-retry</text>
+<text x="255" y="296" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">honor Retry-After</text>
+<text x="255" y="312" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">max 3 retries</text>
+<text x="255" y="326" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">MFE sees loading state</text>
+
+<!-- Action 3: Emit event -->
+<line x1="475" y1="202" x2="475" y2="262" stroke="rgb(175,169,236)" stroke-width="0.5" marker-end="url(#arr)"/>
+<rect x="410" y="264" width="130" height="78" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<text x="475" y="280" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)" opacity="0.7">Emit + pass through</text>
+<text x="475" y="296" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">device:degraded</text>
+<text x="475" y="312" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">result still valid</text>
+<text x="475" y="326" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">MFE shows banner</text>
+
+<!-- Action 4: Fair queue -->
+<line x1="630" y1="202" x2="630" y2="262" stroke="rgb(240,153,123)" stroke-width="0.5" marker-end="url(#arr)"/>
+<rect x="565" y="264" width="130" height="78" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<text x="630" y="280" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)" opacity="0.7">Fair-share queue</text>
+<text x="630" y="296" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">per-MFE quotas</text>
+<text x="630" y="312" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">prevents MFE starvation</text>
+<text x="630" y="326" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(194,192,182)" opacity="0.75">backpressure per module</text>
+
+<!-- ═══ KEY PROPERTY ═══ -->
+<line x1="40" y1="364" x2="680" y2="364" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+<text x="360" y="386" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">MFE ISOLATION GUARANTEES</text>
+
+<!-- Guarantee boxes -->
+<rect x="40" y="398" width="200" height="50" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<rect x="44" y="402" width="4" height="42" rx="2" fill="rgb(93,202,165)" opacity="0.75"/>
+<text x="56" y="416" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(250,249,245)">Crash isolation</text>
+<text x="56" y="432" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">MFE unmount cancels only its</text>
+<text x="56" y="444" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">requests. Others unaffected.</text>
+
+<rect x="260" y="398" width="200" height="50" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<rect x="264" y="402" width="4" height="42" rx="2" fill="rgb(175,169,236)" opacity="0.75"/>
+<text x="276" y="416" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(250,249,245)">Fair scheduling</text>
+<text x="276" y="432" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">Per-MFE quotas prevent one</text>
+<text x="276" y="444" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">module from starving others.</text>
+
+<rect x="480" y="398" width="200" height="50" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<rect x="484" y="402" width="4" height="42" rx="2" fill="rgb(240,153,123)" opacity="0.75"/>
+<text x="496" y="416" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(250,249,245)">Shared recovery</text>
+<text x="496" y="432" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">One reconnect loop, not N.</text>
+<text x="496" y="444" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">All MFEs recover together.</text>
+
+<!-- Footer -->
+<text x="360" y="476" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.65">All error handling lives in the shell service — MFEs only implement UI-level degradation (loading states, banners, retry buttons).</text>
+<text x="360" y="492" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.65">Service never throws to MFEs. Errors are normalized into typed results: { status: 'error', code: string, retrying: boolean }.</text>
+</svg>

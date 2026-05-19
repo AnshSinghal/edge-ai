@@ -1,0 +1,625 @@
+{
+  "info": {
+    "_postman_id": "edge-agent-a4-ane-fallback",
+    "name": "Edge Agent — A4: Apple Neural Engine Fallback (macOS)",
+    "description": "Sarvam AI — Edge Agent Runtime — Part A §4: ANE failure handling on macOS Apple Silicon.\n\nCovers the 4-tier waterfall: ANE (Tier 0) → Metal GPU (Tier 1) → CPU Accelerate (Tier 2) → Cloud API (Tier 3 — enterprise opt-in only).\n\nKey difference from A3 (Qualcomm NPU): ANE unavailability is often TRANSIENT — another process may release the ANE within seconds. GPU is a meaningful intermediate tier (~1.8× slower vs ~4.4× for CPU). All tiers remain in-process via Core ML MLModelConfiguration.computeUnits — no process restart.\n\nHeaders to observe:\n- X-Edge-Compute: ane | metal-gpu | cpu-fallback | cloud-fallback\n- X-Edge-Latency-Factor: 1.0 (ANE) → 1.8 (GPU) → 4.0 (CPU) → variable (Cloud)\n- X-Edge-Device-Status: healthy | degraded | critical\n- X-Edge-Tier: 0 | 1 | 2 | 3\n- X-Edge-Estimated-Restore: seconds until next ANE probe\n\nFolders:\n1. Baseline — normal ANE inference (reference)\n2. Tier 1 Fallback — Metal GPU (ANE faulted)\n3. Tier 2 Fallback — CPU Accelerate (ANE + GPU faulted)\n4. Tier 3 Fallback — Cloud (latency-critical + enterprise policy)\n5. Device Health Endpoint — /v1/health/devices across all states\n6. ANE Restoration — first request after probe passes",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8741",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "ek_live_your_key_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1 — Baseline (ANE Tier 0, Healthy)",
+      "description": "Reference: normal inference when the ANE is fully operational. Core ML uses .all compute units — schedules ops on ANE automatically.",
+      "item": [
+        {
+          "name": "TTS — ANE Inference (Healthy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आप कैसे हैं?\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "ANE healthy — Core ML uses .all compute units, ANE processes the model. Latency ~8ms/token. X-Edge-Tier: 0."
+          },
+          "response": [
+            {
+              "name": "200 OK — ANE Tier 0 (Healthy, ~64ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 64,\n    \"baseline_latency_ms\": 64,\n    \"device_status\": \"healthy\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "NMT — ANE Inference (Healthy)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Hello, how are you?\",\n  \"params\": {\n    \"src_lang\": \"en\",\n    \"tgt_lang\": \"hi\"\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Batch NMT translation on ANE. ~40ms batch latency. Reference for comparison against degraded tiers."
+          },
+          "response": [
+            {
+              "name": "200 OK — NMT on ANE (~40ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"नमस्ते, आप कैसे हैं?\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 40,\n    \"device_status\": \"healthy\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2 — Tier 1 Fallback (Metal GPU — ANE Faulted)",
+      "description": "ANE returned kCMErrorUnsupportedOperation. Worker switched Core ML to .cpuAndGPU — forces Metal GPU. ~1.8× slower than ANE.",
+      "item": [
+        {
+          "name": "Case 1 — First Request During ANE Fault (Metal GPU, ~90ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आप कैसे हैं?\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "This request triggers the ANE fault.\n\nTimeline:\n- t=0ms: Core ML returns kCMErrorUnsupportedOperation on .all\n- t=1ms: Device Manager marks ANE as FAULTED\n- t=2-10ms: Core ML model reloaded with .cpuAndGPU\n- t=10ms: Same request retried on Metal GPU\n- t=60-90ms: GPU inference completes\n\nX-Edge-Estimated-Restore: 30 = first probe fires in 30 seconds.\nX-Edge-Latency-Factor: 1.8 = ~1.8× slower than ANE baseline."
+          },
+          "response": [
+            {
+              "name": "200 OK — Metal GPU Tier 1 (First Request, ~90ms worst-case)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "metal-gpu"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.8"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "30"},
+                {"key": "X-Edge-Tier", "value": "1"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"metal-gpu\",\n    \"tier\": 1,\n    \"latency_ms\": 88,\n    \"baseline_latency_ms\": 64,\n    \"device_status\": \"degraded\",\n    \"degraded_since\": \"2025-01-15T10:23:45Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 2 — Steady-State Metal GPU Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Good morning, how is everything?\",\n  \"params\": {\n    \"src_lang\": \"en\",\n    \"tgt_lang\": \"hi\"\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "GPU session already created — no reload overhead. Steady-state GPU fallback: ~70ms NMT (vs ~40ms on ANE). X-Edge-Estimated-Restore decrements as probe timer counts down."
+          },
+          "response": [
+            {
+              "name": "200 OK — NMT, Metal GPU Steady-State (~70ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "metal-gpu"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.7"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "22"},
+                {"key": "X-Edge-Tier", "value": "1"}
+              ],
+              "body": "{\n  \"result\": \"शुभ प्रभात, सब कुछ कैसा है?\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"metal-gpu\",\n    \"tier\": 1,\n    \"latency_ms\": 70,\n    \"device_status\": \"degraded\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 3 — 429 Backpressure at Tier 1 (Queue Scaled 64→32)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"एक और अनुरोध\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "GPU is ~1.8× slower than ANE. Scheduler scales queue depth:\n  effective_limit = floor(64 / 1.8) = 35 slots\n  backpressure_at = floor(35 × 0.8) = 28 slots\n\n429 when normal queue exceeds 28 slots. High-priority requests still admitted (16-slot reservation). Retry-After: 2 — GPU drains reasonably fast."
+          },
+          "response": [
+            {
+              "name": "429 — Queue Scaled at Tier 1 (GPU Fallback Backpressure)",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "Retry-After", "value": "2"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Tier", "value": "1"}
+              ],
+              "body": "{\n  \"error\": \"queue_full\",\n  \"retry_after\": 2,\n  \"reason\": \"metal_gpu_fallback_reduced_capacity\",\n  \"effective_queue_limit\": 35,\n  \"current_depth\": 30\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 4 — SSE Streaming During GPU Fallback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"},
+              {"key": "Accept", "value": "text/event-stream", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"यह एक स्ट्रीमिंग परीक्षण है।\",\n  \"params\": {\n    \"temperature\": 0.7,\n    \"stream\": true\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Token-by-token streaming during Metal GPU fallback. First frame is always a 'meta' frame with compute tier and degradation info. Client can use it to show reduced-performance indicator before tokens arrive. Inter-token latency ~14ms (vs ~8ms on ANE)."
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE Stream (Metal GPU, Meta Frame First)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "text/event-stream"},
+                {"key": "X-Edge-Compute", "value": "metal-gpu"},
+                {"key": "X-Edge-Device-Status", "value": "degraded"},
+                {"key": "X-Edge-Estimated-Restore", "value": "18"}
+              ],
+              "body": "data: {\"type\": \"meta\", \"compute\": \"metal-gpu\", \"tier\": 1, \"latency_factor\": 1.8, \"device_status\": \"degraded\"}\n\ndata: {\"type\": \"token\", \"text\": \"यह\"}\n\ndata: {\"type\": \"token\", \"text\": \" एक\"}\n\ndata: {\"type\": \"token\", \"text\": \" स्ट्रीमिंग\"}\n\ndata: {\"type\": \"done\", \"total_ms\": 420}\n\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3 — Tier 2 Fallback (CPU Accelerate — ANE + GPU Faulted)",
+      "description": "Both ANE and GPU are faulted. CPU (Accelerate framework, AMX + NEON) is always available. ~4.4× slower than ANE. X-Edge-Device-Status: critical.",
+      "item": [
+        {
+          "name": "Case 1 — Double Cascade (ANE Fail → GPU Fail → CPU Succeed, ~115ms)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आप कैसे हैं?\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Worst-case cascade: ANE returned kCMErrorUnsupportedOperation, then GPU returned MTLCommandBuffer error (rare: shader compilation failure). Worker cascaded to CPU in the same request lifecycle.\n\nCascade overhead: ~50ms (two Core ML reloads). CPU inference: ~35ms/token.\nX-Edge-Device-Status: critical — both accelerators down. Client should expect 4× slowdown until recovery."
+          },
+          "response": [
+            {
+              "name": "200 OK — CPU Tier 2 (Double Cascade, ~115ms worst-case)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "4.4"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Estimated-Restore", "value": "55"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 113,\n    \"baseline_latency_ms\": 64,\n    \"device_status\": \"critical\",\n    \"degraded_since\": \"2025-01-15T10:23:45Z\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 2 — Steady-State CPU Fallback (Both Tiers Quarantined)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Please translate this text.\",\n  \"params\": {\n    \"src_lang\": \"en\",\n    \"tgt_lang\": \"hi\"\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "No cascade overhead — CPU session already created. Steady-state: ~180ms NMT (vs ~40ms on ANE). Queue scaled aggressively: effective_limit = floor(64/4.4) = 14 slots."
+          },
+          "response": [
+            {
+              "name": "200 OK — NMT, CPU Tier 2 Steady-State (~180ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "4.5"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Estimated-Restore", "value": "42"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"कृपया इस पाठ का अनुवाद करें।\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 181,\n    \"device_status\": \"critical\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Case 3 — SSE Streaming at Tier 2 (CPU, Critical Status)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"},
+              {"key": "Accept", "value": "text/event-stream", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"यह एक महत्वपूर्ण संदेश है।\",\n  \"params\": {\n    \"temperature\": 0.7,\n    \"stream\": true\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Streaming with both ANE and GPU faulted. Meta frame shows device_status: critical. Inter-token latency ~35ms (CPU) vs ~8ms (ANE). Client should surface a visible degradation warning, not just a subtle indicator."
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE Stream (CPU Fallback, Critical)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "text/event-stream"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Estimated-Restore", "value": "40"}
+              ],
+              "body": "data: {\"type\": \"meta\", \"compute\": \"cpu-fallback\", \"tier\": 2, \"latency_factor\": 4.0, \"device_status\": \"critical\"}\n\ndata: {\"type\": \"token\", \"text\": \"यह\"}\n\ndata: {\"type\": \"token\", \"text\": \" एक\"}\n\ndata: {\"type\": \"token\", \"text\": \" महत्वपूर्ण\"}\n\ndata: {\"type\": \"done\", \"total_ms\": 850}\n\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4 — Tier 3 Fallback (Cloud — Latency-Critical + Enterprise Policy)",
+      "description": "Cloud fallback is opt-in (config.cloud_fallback = true) and only for latency-critical requests. Data leaves the device — requires enterprise consent. Cloud backoff is 15s → 60s (shorter than hardware probes).",
+      "item": [
+        {
+          "name": "Cloud TTS — Latency-Critical, Policy Enabled",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"यह एक अत्यावश्यक संदेश है।\",\n  \"params\": {\n    \"temperature\": 0.7,\n    \"latency_critical\": true\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "ANE + GPU both quarantined. Request has latency_critical=true. Enterprise policy cloud_fallback=true. Network reachable. Worker routes to cloud: https://api.sarvam.ai/v1/inference.\n\nCloud latency ~10ms/token + RTT (~20-80ms). Effectively similar to ANE speed if network is good, but variable.\n\nX-Edge-Compute: cloud-fallback. Short-lived token retrieved from OS keychain — never in plaintext config. Correlation ID included for audit trail."
+          },
+          "response": [
+            {
+              "name": "200 OK — Cloud Tier 3 (~95ms including RTT)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cloud-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.5"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Tier", "value": "3"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cloud-fallback\",\n    \"tier\": 3,\n    \"latency_ms\": 95,\n    \"cloud_rtt_ms\": 45,\n    \"device_status\": \"critical\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Batch NMT — Stays on CPU Despite Policy (Not Latency-Critical)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Please translate this batch document.\",\n  \"params\": {\n    \"src_lang\": \"en\",\n    \"tgt_lang\": \"hi\",\n    \"latency_critical\": false\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Cloud policy is enabled, but this request has latency_critical=false (batch translation). Cloud is skipped — batch jobs always run locally even if slower. Served on CPU despite cloud being available. Data sovereignty maintained for non-critical work."
+          },
+          "response": [
+            {
+              "name": "200 OK — Batch NMT on CPU (Cloud Skipped, Not Latency-Critical)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "4.5"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"कृपया इस बैच दस्तावेज़ का अनुवाद करें।\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 182,\n    \"device_status\": \"critical\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5 — Device Health Endpoint",
+      "description": "GET /v1/health/devices — returns state of all 4 tiers (ANE, GPU, CPU, Cloud) plus active provider.",
+      "item": [
+        {
+          "name": "GET /v1/health/devices — ANE Faulted, GPU Active (Tier 1)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "ANE is FAULTED (kCMErrorUnsupportedOperation), GPU is READY and active. active_tier: 1, active_provider: metal-gpu. next_probe_s: 28 on ANE (probe_attempt 1 → 60s backoff)."
+          },
+          "response": [
+            {
+              "name": "200 OK — ANE Faulted, GPU Serving (Tier 1)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"ane\": {\n    \"state\": \"faulted\",\n    \"since\": \"2025-01-15T10:23:45Z\",\n    \"error\": \"kCMErrorUnsupportedOperation\",\n    \"next_probe_s\": 28,\n    \"probe_attempt\": 1\n  },\n  \"gpu\": {\"state\": \"ready\", \"utilization_pct\": 42},\n  \"cpu\": {\"state\": \"ready\"},\n  \"cloud\": {\"state\": \"ready\", \"policy\": \"allowed\", \"reachable\": true},\n  \"active_tier\": 1,\n  \"active_provider\": \"metal-gpu\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — Both ANE and GPU Faulted (Tier 2, Critical)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "Both accelerators quarantined — rare scenario. active_tier: 2 (CPU). GPU probe_attempt: 1 (30s backoff). ANE probe_attempt: 2 (60s backoff). CPU is never quarantined — always state: ready."
+          },
+          "response": [
+            {
+              "name": "200 OK — ANE + GPU Faulted, CPU Active (Tier 2, Critical)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"ane\": {\n    \"state\": \"faulted\",\n    \"since\": \"2025-01-15T10:23:45Z\",\n    \"error\": \"kCMErrorUnsupportedOperation\",\n    \"next_probe_s\": 55,\n    \"probe_attempt\": 2\n  },\n  \"gpu\": {\n    \"state\": \"faulted\",\n    \"since\": \"2025-01-15T10:23:48Z\",\n    \"error\": \"MTLCommandBufferError\",\n    \"next_probe_s\": 18,\n    \"probe_attempt\": 1\n  },\n  \"cpu\": {\"state\": \"ready\"},\n  \"cloud\": {\"state\": \"ready\", \"policy\": \"allowed\", \"reachable\": true},\n  \"active_tier\": 2,\n  \"active_provider\": \"cpu-fallback\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — ANE Probing (Background Check In Progress)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "ANE health probe is currently executing: (1) Core ML canary inference with .all, (2) result validation against reference. next_probe_s: 0 = probe is running now. GPU still active during probe — requests continue uninterrupted."
+          },
+          "response": [
+            {
+              "name": "200 OK — ANE Probing (Canary Inference Running)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"ane\": {\n    \"state\": \"probing\",\n    \"since\": \"2025-01-15T10:23:45Z\",\n    \"next_probe_s\": 0,\n    \"probe_attempt\": 1\n  },\n  \"gpu\": {\"state\": \"ready\", \"utilization_pct\": 38},\n  \"cpu\": {\"state\": \"ready\"},\n  \"cloud\": {\"state\": \"ready\", \"policy\": \"allowed\", \"reachable\": true},\n  \"active_tier\": 1,\n  \"active_provider\": \"metal-gpu\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "GET /v1/health/devices — All Tiers Healthy (Fully Restored)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"}
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/health/devices",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "health", "devices"]
+            },
+            "description": "ANE probe passed — both canary inference and result validation. ANE restored to READY. active_tier: 0 (ANE). Subsequent requests routed back to ANE automatically."
+          },
+          "response": [
+            {
+              "name": "200 OK — All Tiers Healthy (ANE Restored)",
+              "status": "OK",
+              "code": 200,
+              "header": [{"key": "Content-Type", "value": "application/json"}],
+              "body": "{\n  \"ane\": {\n    \"state\": \"ready\",\n    \"restored_at\": \"2025-01-15T10:25:15Z\",\n    \"downtime_s\": 90,\n    \"probe_attempts\": 2\n  },\n  \"gpu\": {\"state\": \"ready\"},\n  \"cpu\": {\"state\": \"ready\"},\n  \"cloud\": {\"state\": \"ready\", \"policy\": \"allowed\", \"reachable\": true},\n  \"active_tier\": 0,\n  \"active_provider\": \"ane\"\n}"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6 — ANE Restoration",
+      "description": "Requests served after the ANE health probe passes. GPU utilization check also happens — GPU skip if >80% utilized even when ANE is restored.",
+      "item": [
+        {
+          "name": "TTS — First Request After ANE Restored (Back to Tier 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"एएनई वापस आ गई है।\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "ANE probe passed both checks: canary Core ML inference with .all completed without kCMErrorUnsupportedOperation, and result validated against reference.\n\nDevice Manager: FAULTED → READY. Worker heartbeat: device: ane, tier: 0. Scheduler restores queue depth to 64 slots. GPU session destroyed, new ANE session created.\n\nX-Edge-Device-Status: healthy. No X-Edge-Estimated-Restore (not needed when healthy). Latency back to ~8ms/token."
+          },
+          "response": [
+            {
+              "name": "200 OK — ANE Restored (Back to Tier 0, ~64ms)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "ane"},
+                {"key": "X-Edge-Latency-Factor", "value": "1.0"},
+                {"key": "X-Edge-Device-Status", "value": "healthy"},
+                {"key": "X-Edge-Tier", "value": "0"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 65,\n    \"device_status\": \"healthy\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TTS — GPU Utilization >80% (Skips GPU, Falls to CPU Despite ANE Unavailable)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {"key": "Authorization", "value": "Bearer {{apiKey}}", "type": "text"},
+              {"key": "Content-Type", "value": "application/json", "type": "text"}
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"जीपीयू व्यस्त है।\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {"raw": {"language": "json"}}
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "ANE is faulted. GPU is READY but MTLDevice.currentAllocatedSize + IOKit residency counters show >80% utilization (e.g., video editing app running).\n\nDecision function skips GPU → drops directly to CPU to prevent UI jank. X-Edge-Device-Status: critical even though GPU is technically available — because the utilization check denied admission."
+          },
+          "response": [
+            {
+              "name": "200 OK — CPU Tier 2 (GPU Utilization >80%, Admission Denied)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {"key": "Content-Type", "value": "application/json"},
+                {"key": "X-Edge-Compute", "value": "cpu-fallback"},
+                {"key": "X-Edge-Latency-Factor", "value": "4.4"},
+                {"key": "X-Edge-Device-Status", "value": "critical"},
+                {"key": "X-Edge-Tier", "value": "2"}
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 115,\n    \"device_status\": \"critical\",\n    \"gpu_skip_reason\": \"high_utilization\"\n  }\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

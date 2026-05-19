@@ -1,0 +1,154 @@
+<svg width="720" height="780" viewBox="0 0 720 780" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>ANE Fallback Decision Tree</title>
+<desc>When Core ML returns kCMErrorUnsupportedOperation, the worker walks a decision tree: try Metal GPU, then CPU via Accelerate, then remote cloud API, with selection criteria at each branch.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">ANE FALLBACK DECISION TREE</text>
+<text x="360" y="36" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">macOS 14+ · Core ML · kCMErrorUnsupportedOperation</text>
+
+<!-- ═══ TIER 0: ANE (normal) ═══ -->
+<rect x="280" y="56" width="160" height="44" rx="8" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="360" y="74" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(159,225,203)">ANE (Neural Engine)</text>
+<text x="360" y="92" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(93,202,165)" opacity="0.6">preferred · ~1× baseline</text>
+
+<!-- Failure arrow -->
+<line x1="360" y1="100" x2="360" y2="128" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<rect x="310" y="108" width="100" height="16" rx="3" fill="rgb(38,38,36)"/>
+<text x="360" y="120" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(200,80,70)">kCMError…</text>
+
+<!-- ═══ DECISION NODE 1: Is Metal GPU available? ═══ -->
+<rect x="260" y="130" width="200" height="38" rx="6" fill="none" stroke="rgba(222,220,209,0.25)" stroke-width="0.5"/>
+<text x="360" y="148" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">GPU available + model fits VRAM?</text>
+<text x="360" y="162" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">MTLDevice exists · gpu.state = READY</text>
+
+<!-- YES branch (left) → Metal GPU -->
+<line x1="260" y1="149" x2="180" y2="149" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<line x1="180" y1="149" x2="180" y2="184" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="216" y="145" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)">yes</text>
+
+<!-- ═══ TIER 1: Metal GPU ═══ -->
+<rect x="80" y="186" width="200" height="74" rx="8" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="180" y="206" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(206,203,246)">Tier 1 · Metal GPU</text>
+<text x="180" y="224" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(175,169,236)" opacity="0.7">MLComputeUnits = .cpuAndGPU</text>
+<text x="180" y="240" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(175,169,236)" opacity="0.8">~1.5-2× slower than ANE</text>
+<text x="180" y="254" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(175,169,236)" opacity="0.75">shared with display compositor</text>
+
+<!-- NO branch (right) → next decision -->
+<line x1="460" y1="149" x2="540" y2="149" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<line x1="540" y1="149" x2="540" y2="184" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="503" y="145" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(200,80,70)" opacity="0.7">no / faulted</text>
+
+<!-- Metal fail → next decision -->
+<line x1="180" y1="260" x2="180" y2="290" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="3 3"/>
+<line x1="180" y1="290" x2="360" y2="290" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="3 3"/>
+<text x="268" y="286" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(200,80,70)" opacity="0.8">Metal fails → continue</text>
+
+<!-- ═══ DECISION NODE 2: latency-critical? ═══ -->
+<rect x="440" y="186" width="200" height="38" rx="6" fill="none" stroke="rgba(222,220,209,0.25)" stroke-width="0.5"/>
+<text x="540" y="204" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">Request latency-critical?</text>
+<text x="540" y="218" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">streaming TTS / real-time</text>
+
+<!-- NO (not latency-critical) → CPU is fine -->
+<line x1="540" y1="224" x2="540" y2="254" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<line x1="540" y1="254" x2="460" y2="254" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="506" y="248" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)">no → CPU ok</text>
+
+<!-- YES (latency-critical) → cloud might be needed -->
+<line x1="640" y1="205" x2="680" y2="205" stroke="rgb(230,200,100)" stroke-width="0.5"/>
+<text x="666" y="200" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(230,200,100)" opacity="0.7">yes</text>
+<line x1="680" y1="205" x2="680" y2="308" stroke="rgb(230,200,100)" stroke-width="0.5" stroke-dasharray="3 3"/>
+
+<!-- ═══ TIER 2: CPU via Accelerate ═══ -->
+<rect x="260" y="300" width="200" height="74" rx="8" fill="rgb(113,43,19)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="360" y="320" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(245,196,179)">Tier 2 · CPU (Accelerate)</text>
+<text x="360" y="338" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(240,153,123)" opacity="0.7">MLComputeUnits = .cpuOnly</text>
+<text x="360" y="354" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(240,153,123)" opacity="0.8">~3-5× slower than ANE</text>
+<text x="360" y="368" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(240,153,123)" opacity="0.75">always available · AMX + NEON</text>
+
+<!-- CPU fail or too slow → cloud -->
+<line x1="360" y1="374" x2="360" y2="400" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="3 3"/>
+<text x="368" y="394" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="8" fill="rgb(200,80,70)" opacity="0.8">too slow for SLA</text>
+
+<!-- Cloud join point -->
+<line x1="680" y1="308" x2="680" y2="420" stroke="rgb(230,200,100)" stroke-width="0.5" stroke-dasharray="3 3"/>
+<line x1="680" y1="420" x2="460" y2="420" stroke="rgb(230,200,100)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- ═══ DECISION NODE 3: Cloud allowed? ═══ -->
+<rect x="260" y="404" width="200" height="38" rx="6" fill="none" stroke="rgba(222,220,209,0.25)" stroke-width="0.5"/>
+<text x="360" y="422" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">Enterprise cloud policy allows?</text>
+<text x="360" y="436" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8">config.cloud_fallback = true · network up</text>
+
+<!-- YES → Cloud -->
+<line x1="260" y1="423" x2="190" y2="423" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<line x1="190" y1="423" x2="190" y2="460" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="222" y="418" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(93,202,165)">yes</text>
+
+<!-- NO → Degrade gracefully -->
+<line x1="460" y1="423" x2="540" y2="423" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<line x1="540" y1="423" x2="540" y2="460" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="504" y="418" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(200,80,70)" opacity="0.7">no / offline</text>
+
+<!-- ═══ TIER 3: Remote Cloud ═══ -->
+<rect x="90" y="462" width="200" height="74" rx="8" fill="rgb(68,68,65)" stroke="rgb(180,178,169)" stroke-width="0.5"/>
+<text x="190" y="482" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(250,249,245)">Tier 3 · Remote Cloud API</text>
+<text x="190" y="500" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.7">Sarvam cloud inference endpoint</text>
+<text x="190" y="516" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">~1× speed · +50-200ms network RTT</text>
+<text x="190" y="530" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(230,200,100)" opacity="0.8">data leaves device · needs consent</text>
+
+<!-- ═══ FINAL FALLBACK: CPU best-effort ═══ -->
+<rect x="440" y="462" width="200" height="52" rx="8" fill="none" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="4 3"/>
+<text x="540" y="484" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(240,120,110)">CPU best-effort</text>
+<text x="540" y="500" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">slow but functional · no data leak</text>
+<text x="540" y="508" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(200,80,70)" opacity="0.8">SLA may be violated</text>
+
+<!-- ═══ PERFORMANCE TABLE ═══ -->
+<line x1="40" y1="546" x2="680" y2="546" stroke="rgba(222,220,209,0.15)" stroke-width="0.5"/>
+<text x="360" y="566" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">PERFORMANCE COMPARISON</text>
+
+<!-- Table headers -->
+<text x="80" y="590" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8" letter-spacing="0.06em">TIER</text>
+<text x="200" y="590" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8" letter-spacing="0.06em">PROVIDER</text>
+<text x="340" y="590" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8" letter-spacing="0.06em">LATENCY</text>
+<text x="440" y="590" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8" letter-spacing="0.06em">POWER</text>
+<text x="530" y="590" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.8" letter-spacing="0.06em">DATA LEAVES?</text>
+<line x1="60" y1="596" x2="680" y2="596" stroke="rgba(222,220,209,0.08)" stroke-width="0.5"/>
+
+<!-- Row 0: ANE -->
+<text x="80" y="614" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(159,225,203)">0</text>
+<text x="200" y="614" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(159,225,203)">ANE</text>
+<text x="340" y="614" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">1× baseline</text>
+<text x="440" y="614" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(93,202,165)">lowest</text>
+<text x="530" y="614" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(93,202,165)">no</text>
+
+<!-- Row 1: Metal GPU -->
+<text x="80" y="636" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(206,203,246)">1</text>
+<text x="200" y="636" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(206,203,246)">Metal GPU</text>
+<text x="340" y="636" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">~1.5-2×</text>
+<text x="440" y="636" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(230,200,100)">moderate</text>
+<text x="530" y="636" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(93,202,165)">no</text>
+
+<!-- Row 2: CPU -->
+<text x="80" y="658" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(245,196,179)">2</text>
+<text x="200" y="658" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(245,196,179)">CPU (Accelerate)</text>
+<text x="340" y="658" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">~3-5×</text>
+<text x="440" y="658" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(240,120,110)">highest</text>
+<text x="530" y="658" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(93,202,165)">no</text>
+
+<!-- Row 3: Cloud -->
+<text x="80" y="680" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(194,192,182)">3</text>
+<text x="200" y="680" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(194,192,182)">Cloud API</text>
+<text x="340" y="680" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(250,249,245)">~1× + RTT</text>
+<text x="440" y="680" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(93,202,165)">lowest</text>
+<text x="530" y="680" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" fill="rgb(240,120,110)">yes</text>
+
+<!-- Footer -->
+<line x1="40" y1="700" x2="680" y2="700" stroke="rgba(222,220,209,0.1)" stroke-width="0.5"/>
+<text x="360" y="720" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">Tier order: ANE → Metal → CPU → Cloud. CPU is the final local fallback (always available).</text>
+<text x="360" y="736" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">Cloud requires explicit enterprise opt-in — data sovereignty is non-negotiable.</text>
+</svg>

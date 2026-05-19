@@ -1,0 +1,167 @@
+<svg width="720" height="480" viewBox="0 0 720 480" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>SSE Token Delivery Model — Streaming During Contention</title>
+<desc>How SSE tokens flow from the Edge Agent through the scheduler to the Meeting Summariser MFE, and how this interacts with Document Q&amp;A's queued request.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">SSE TOKEN DELIVERY DURING CONTENTION</text>
+<text x="360" y="36" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">streaming slots hold until complete · queued requests wait for slot free · tokens forwarded in real-time</text>
+
+<!-- ═══ SWIMLANE HEADERS ═══ -->
+<rect x="40" y="52" width="100" height="20" rx="3" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="90" y="66" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)">Edge Agent</text>
+
+<rect x="40" y="82" width="100" height="20" rx="3" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.3)" stroke-width="0.5"/>
+<text x="90" y="96" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)">Scheduler</text>
+
+<rect x="40" y="112" width="100" height="20" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="90" y="126" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)">Meeting Sum.</text>
+
+<rect x="40" y="142" width="100" height="20" rx="3" fill="rgb(38,38,36)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="90" y="156" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(175,169,236)">Doc Q&amp;A</text>
+
+<!-- Swimlane lines -->
+<line x1="160" y1="62" x2="680" y2="62" stroke="rgba(222,220,209,0.08)" stroke-width="0.5"/>
+<line x1="160" y1="92" x2="680" y2="92" stroke="rgba(222,220,209,0.08)" stroke-width="0.5"/>
+<line x1="160" y1="122" x2="680" y2="122" stroke="rgba(222,220,209,0.08)" stroke-width="0.5"/>
+<line x1="160" y1="152" x2="680" y2="152" stroke="rgba(222,220,209,0.08)" stroke-width="0.5"/>
+
+<!-- ═══ SEQUENCE: SSE tokens ═══ -->
+
+<!-- Token 1 from agent -->
+<rect x="170" y="54" width="36" height="16" rx="3" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="188" y="65" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₁</text>
+
+<line x1="188" y1="70" x2="188" y2="86" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Scheduler passes through -->
+<rect x="170" y="84" width="48" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="194" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)" opacity="0.6">forward</text>
+
+<line x1="194" y1="100" x2="194" y2="116" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Meeting Sum receives -->
+<rect x="176" y="114" width="36" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="194" y="125" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₁</text>
+
+<!-- Token 2 -->
+<rect x="240" y="54" width="36" height="16" rx="3" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="258" y="65" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₂</text>
+
+<line x1="258" y1="70" x2="258" y2="86" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="240" y="84" width="48" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="264" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)" opacity="0.6">forward</text>
+
+<line x1="264" y1="100" x2="264" y2="116" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="246" y="114" width="36" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="264" y="125" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₂</text>
+
+<!-- Doc Q&A request arrives (between token 2 and 3) -->
+<rect x="310" y="144" width="70" height="16" rx="3" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="345" y="155" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(175,169,236)">inference()</text>
+
+<line x1="345" y1="144" x2="345" y2="102" stroke="rgb(175,169,236)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Scheduler queues it -->
+<rect x="320" y="84" width="56" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="348" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(240,153,123)">→ queue</text>
+
+<!-- Token 3 still flows (not blocked) -->
+<rect x="400" y="54" width="36" height="16" rx="3" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="418" y="65" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₃</text>
+
+<line x1="418" y1="70" x2="418" y2="86" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="400" y="84" width="48" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="424" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)" opacity="0.6">forward</text>
+
+<line x1="424" y1="100" x2="424" y2="116" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="406" y="114" width="36" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="424" y="125" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">tok₃</text>
+
+<!-- Stream ends (last token + [DONE]) -->
+<rect x="480" y="54" width="50" height="16" rx="3" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="505" y="65" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">[DONE]</text>
+
+<line x1="505" y1="70" x2="505" y2="86" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="470" y="84" width="70" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="505" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)" opacity="0.6">slot freed!</text>
+
+<line x1="505" y1="100" x2="505" y2="116" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="480" y="114" width="50" height="16" rx="3" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="505" y="125" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(93,202,165)">[DONE]</text>
+
+<!-- Dequeue: doc-qa dispatched -->
+<line x1="540" y1="92" x2="570" y2="92" stroke="rgb(175,169,236)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="572" y="84" width="60" height="16" rx="3" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="602" y="95" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(175,169,236)">dispatch</text>
+
+<line x1="602" y1="70" x2="602" y2="56" stroke="rgb(175,169,236)" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+
+<!-- Agent processes doc-qa -->
+<rect x="576" y="48" width="80" height="22" rx="3" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="616" y="63" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(175,169,236)">NMT inference</text>
+
+<!-- Result back to doc-qa -->
+<line x1="602" y1="100" x2="602" y2="146" stroke="rgb(175,169,236)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<rect x="574" y="144" width="60" height="16" rx="3" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="604" y="155" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(175,169,236)">result</text>
+
+<!-- ═══ KEY INSIGHT ═══ -->
+<line x1="40" y1="180" x2="680" y2="180" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+
+<!-- Streaming slot model -->
+<rect x="40" y="196" width="300" height="110" rx="6" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="60" y="216" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">Streaming Slot Model</text>
+<text x="60" y="236" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">A streaming request occupies its slot</text>
+<text x="60" y="250" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">for the ENTIRE duration of the stream.</text>
+<text x="60" y="270" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Slot freed when: SSE sends [DONE]</text>
+<text x="60" y="284" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">                 OR timeout fires</text>
+<text x="60" y="298" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">                 OR MFE aborts</text>
+
+<!-- Token forwarding -->
+<rect x="370" y="196" width="300" height="110" rx="6" fill="rgb(38,38,36)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="390" y="216" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(206,203,246)">Token Forwarding</text>
+<text x="390" y="236" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Scheduler does NOT buffer tokens.</text>
+<text x="390" y="250" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Each SSE event is forwarded to the</text>
+<text x="390" y="264" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">MFE's AsyncGenerator immediately.</text>
+<text x="390" y="284" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Latency added: &lt; 0.01ms (yield)</text>
+<text x="390" y="298" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Queued requests don't block tokens.</text>
+
+<!-- ═══ QUEUE VISIBILITY ═══ -->
+<line x1="40" y1="322" x2="680" y2="322" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+<text x="360" y="342" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">QUEUE VISIBILITY — WHAT EACH MFE SEES</text>
+
+<!-- Meeting Sum sees -->
+<rect x="40" y="354" width="300" height="60" rx="6" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="60" y="374" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">Meeting Summariser sees</text>
+<text x="60" y="392" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">Uninterrupted token stream. No queuing</text>
+<text x="60" y="406" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">events, no latency spikes, no contention.</text>
+
+<!-- Doc Q&A sees -->
+<rect x="370" y="354" width="300" height="60" rx="6" fill="rgb(38,38,36)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="390" y="374" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(206,203,246)">Document Q&amp;A sees</text>
+<text x="390" y="392" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">scheduler:queued event → loading state</text>
+<text x="390" y="406" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">then result (queued_ms in meta)</text>
+
+<!-- ═══ SCHEDULER EVENTS ═══ -->
+<line x1="40" y1="430" x2="680" y2="430" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+
+<text x="40" y="452" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(175,169,236)" opacity="0.6">scheduler:queued    → { request_id, caller: 'doc-qa', priority: 'normal', position: 1 }</text>
+<text x="40" y="466" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)" opacity="0.6">scheduler:dispatched → { request_id, caller: 'doc-qa', queued_ms: 200 }</text>
+
+<!-- Footer -->
+<text x="360" y="480" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.65">Streaming MFE is oblivious to contention. Queued MFE gets position and timing metadata.</text>
+</svg>

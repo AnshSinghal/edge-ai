@@ -1,0 +1,63 @@
+<svg width="720" height="400" viewBox="0 0 720 400" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>Startup Sequence</title>
+<desc>Edge Agent cold boot timeline from 0ms (supervisor start) to ready at 200ms, with optional model pre-warm at 2-5s.</desc>
+
+<!-- Title -->
+<text x="360" y="22" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">STARTUP SEQUENCE</text>
+<text x="360" y="38" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">cold boot → ready in ~200 ms</text>
+
+<!-- Timeline spine -->
+<line x1="120" y1="60" x2="120" y2="370" stroke="rgba(222,220,209,0.15)" stroke-width="1"/>
+
+<!-- t=0ms: Supervisor starts -->
+<circle cx="120" cy="72" r="5" fill="rgb(175,169,236)" opacity="0.8"/>
+<text x="56" y="76" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(175,169,236)">0 ms</text>
+<text x="140" y="76" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(206,203,246)">Supervisor starts</text>
+<text x="310" y="76" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">edge-supervisor · PID 1</text>
+
+<!-- t=10ms: Spawn API -->
+<circle cx="120" cy="112" r="5" fill="rgb(93,202,165)" opacity="0.8"/>
+<text x="56" y="116" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(93,202,165)">10 ms</text>
+<text x="140" y="116" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(159,225,203)">Spawn API Gateway</text>
+<text x="330" y="116" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">edge-api</text>
+
+<!-- t=15ms: Spawn Model Manager -->
+<circle cx="120" cy="152" r="4" fill="rgb(194,192,182)" opacity="0.75"/>
+<text x="56" y="156" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(194,192,182)" opacity="0.6">15 ms</text>
+<text x="140" y="156" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" fill="rgb(250,249,245)">Spawn Model Manager</text>
+<text x="346" y="156" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">edge-store</text>
+
+<!-- t=20ms: Inventory scan -->
+<circle cx="120" cy="192" r="3" fill="rgb(194,192,182)" opacity="0.65"/>
+<text x="56" y="196" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(194,192,182)" opacity="0.8">20 ms</text>
+<text x="140" y="196" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" fill="rgb(194,192,182)">Model inventory scan</text>
+<text x="330" y="196" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(194,192,182)" opacity="0.75">~/.edge/models/</text>
+
+<!-- t=50ms: Spawn workers -->
+<circle cx="120" cy="232" r="5" fill="rgb(240,153,123)" opacity="0.8"/>
+<text x="56" y="236" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(240,153,123)">50 ms</text>
+<text x="140" y="236" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" font-weight="500" fill="rgb(245,196,179)">Spawn Inference Workers</text>
+<text x="370" y="236" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">edge-worker-{0..N}</text>
+
+<!-- t=100ms: Bind -->
+<circle cx="120" cy="272" r="3" fill="rgb(93,202,165)" opacity="0.8"/>
+<text x="56" y="276" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(93,202,165)" opacity="0.7">100 ms</text>
+<text x="140" y="276" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" fill="rgb(194,192,182)">API Gateway binds</text>
+<text x="298" y="276" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(93,202,165)" opacity="0.6">127.0.0.1:8741</text>
+
+<!-- t=200ms: READY -->
+<circle cx="120" cy="318" r="6" fill="rgb(93,202,165)" opacity="0.9"/>
+<circle cx="120" cy="318" r="3" fill="rgb(250,249,245)"/>
+<text x="56" y="322" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" font-weight="600" fill="rgb(93,202,165)">200 ms</text>
+<rect x="136" y="308" width="56" height="20" rx="4" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="164" y="322" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="600" fill="rgb(159,225,203)">READY</text>
+<text x="200" y="322" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" fill="rgb(250,249,245)">workers idle — accepting requests</text>
+
+<!-- t=2-5s: Model load (optional) -->
+<line x1="120" y1="330" x2="120" y2="352" stroke="rgba(222,220,209,0.1)" stroke-width="1" stroke-dasharray="3 3"/>
+<circle cx="120" cy="358" r="3" fill="rgb(194,192,182)" opacity="0.65"/>
+<text x="56" y="362" text-anchor="end" font-family="'SF Mono','Fira Code',monospace" font-size="11" fill="rgb(194,192,182)" opacity="0.75">2-5 s</text>
+<text x="140" y="362" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="12" fill="rgb(194,192,182)" opacity="0.6">First request loads model into memory</text>
+<text x="140" y="378" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">or pre-warm most-used on startup if configured</text>
+</svg>

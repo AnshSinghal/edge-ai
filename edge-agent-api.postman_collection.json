@@ -1,0 +1,331 @@
+{
+  "info": {
+    "_postman_id": "edge-agent-runtime-v1",
+    "name": "Edge Agent Runtime API",
+    "description": "Sarvam AI — Edge Agent Runtime — localhost inference API.\n\nBase URL: http://127.0.0.1:8741\nAuth: Bearer token via Authorization header.\n\nAll X-Edge-* response headers are optional metadata; do not treat them as schema-breaking.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8741",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "ek_live_your_key_here",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Inference",
+      "item": [
+        {
+          "name": "TTS — Indic Text-to-Speech",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते\",\n  \"params\": {\n    \"temperature\": 0.7\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Runs Indic text-to-speech via indic-tts-v3. Returns base64-encoded audio in the `result` field.\n\nExpected response headers (healthy / ANE compute):\n- X-Edge-Compute: ane\n- X-Edge-Latency-Factor: 1.0\n- X-Edge-Device-Status: healthy\n- X-Edge-Tier: 0"
+          },
+          "response": [
+            {
+              "name": "200 OK — Healthy (ANE, Tier 0)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Edge-Compute", "value": "ane" },
+                { "key": "X-Edge-Latency-Factor", "value": "1.0" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" },
+                { "key": "X-Edge-Tier", "value": "0" }
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"ane\",\n    \"tier\": 0,\n    \"latency_ms\": 45\n  }\n}"
+            },
+            {
+              "name": "200 OK — Degraded (CPU fallback, Tier 2)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Edge-Compute", "value": "cpu-fallback" },
+                { "key": "X-Edge-Latency-Factor", "value": "3.8" },
+                { "key": "X-Edge-Device-Status", "value": "critical" },
+                { "key": "X-Edge-Estimated-Restore", "value": "30" },
+                { "key": "X-Edge-Tier", "value": "2" }
+              ],
+              "body": "{\n  \"result\": \"<base64-encoded audio data>\",\n  \"model\": \"indic-tts-v3\",\n  \"_meta\": {\n    \"compute\": \"cpu-fallback\",\n    \"tier\": 2,\n    \"latency_ms\": 170\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "NMT — Neural Machine Translation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-nmt-v2\",\n  \"input\": \"Hello world\",\n  \"params\": {\n    \"source_lang\": \"en\",\n    \"target_lang\": \"hi\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Neural machine translation via indic-nmt-v2. Returns translated text in the `result` field."
+          },
+          "response": [
+            {
+              "name": "200 OK — Healthy (GPU Metal, Tier 1)",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Edge-Compute", "value": "metal" },
+                { "key": "X-Edge-Latency-Factor", "value": "1.2" },
+                { "key": "X-Edge-Device-Status", "value": "healthy" },
+                { "key": "X-Edge-Tier", "value": "1" }
+              ],
+              "body": "{\n  \"result\": \"नमस्ते दुनिया\",\n  \"model\": \"indic-nmt-v2\",\n  \"_meta\": {\n    \"compute\": \"metal\",\n    \"tier\": 1,\n    \"latency_ms\": 28\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "TTS — Streaming via SSE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream",
+                "type": "text",
+                "description": "Request token-by-token SSE streaming"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"नमस्ते, आज का मौसम कैसा है?\",\n  \"params\": {\n    \"temperature\": 0.7,\n    \"stream\": true\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Same endpoint — SSE streaming mode is activated by sending `Accept: text/event-stream`. Gateway streams audio tokens as server-sent events.\n\nSSE event format:\n  data: {\"chunk\": \"<base64-audio-chunk>\", \"index\": 0}\n  data: {\"chunk\": \"<base64-audio-chunk>\", \"index\": 1}\n  data: [DONE]"
+          },
+          "response": [
+            {
+              "name": "200 OK — SSE Stream",
+              "status": "OK",
+              "code": 200,
+              "header": [
+                { "key": "Content-Type", "value": "text/event-stream" },
+                { "key": "Cache-Control", "value": "no-cache" },
+                { "key": "X-Edge-Compute", "value": "ane" },
+                { "key": "X-Edge-Tier", "value": "0" }
+              ],
+              "body": "data: {\"chunk\": \"<base64-audio-chunk-0>\", \"index\": 0}\n\ndata: {\"chunk\": \"<base64-audio-chunk-1>\", \"index\": 1}\n\ndata: [DONE]\n"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Error Scenarios",
+      "description": "These requests demonstrate gateway error behaviour. Saved responses show exactly what the client receives.",
+      "item": [
+        {
+          "name": "401 — Unauthorized (invalid API key)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer invalid_key_here",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Demonstrates authentication failure. Triggered by missing or invalid Bearer token.\n\nGateway validates key against OS keychain — keys are never plaintext on disk."
+          },
+          "response": [
+            {
+              "name": "401 Unauthorized",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" }
+              ],
+              "body": "{\n  \"error\": \"unauthorized\",\n  \"message\": \"Invalid or missing API key\"\n}"
+            }
+          ]
+        },
+        {
+          "name": "429 — Queue Full (backpressure)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"queue overflow test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Returned when all 64 queue slots are occupied (16 high-priority + 48 normal).\n\nThe `retry_after` field is seconds. Client should back off and retry — requests are idempotent by `request_id`."
+          },
+          "response": [
+            {
+              "name": "429 Too Many Requests",
+              "status": "Too Many Requests",
+              "code": 429,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "Retry-After", "value": "2" }
+              ],
+              "body": "{\n  \"error\": \"queue_full\",\n  \"message\": \"All 64 queue slots occupied. Retry after backoff.\",\n  \"retry_after\": 2\n}"
+            }
+          ]
+        },
+        {
+          "name": "503 — No Workers Available",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Authorization",
+                "value": "Bearer {{apiKey}}",
+                "type": "text"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"indic-tts-v3\",\n  \"input\": \"no workers test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference"]
+            },
+            "description": "Returned when all inference workers are down or restarting (crash budget exceeded).\n\nSupervisor will attempt restart. Client should retry after `retry_after` seconds."
+          },
+          "response": [
+            {
+              "name": "503 Service Unavailable",
+              "status": "Service Unavailable",
+              "code": 503,
+              "header": [
+                { "key": "Content-Type", "value": "application/json" },
+                { "key": "X-Edge-Device-Status", "value": "faulted" },
+                { "key": "Retry-After", "value": "1" }
+              ],
+              "body": "{\n  \"error\": \"no_workers\",\n  \"message\": \"All inference workers unavailable. Supervisor is attempting restart.\",\n  \"retry_after\": 1\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

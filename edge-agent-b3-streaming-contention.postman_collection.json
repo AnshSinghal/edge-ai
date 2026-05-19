@@ -1,0 +1,383 @@
+{
+  "info": {
+    "_postman_id": "b3c4d5e6-f7a8-4b01-9c2d-3e4f5a6b7c8d",
+    "name": "Edge Agent B3 — Streaming + Capacity Contention",
+    "description": "Tests the UX contract between the scheduler and both MFEs (Meeting Summariser + Document Q&A) when the edge agent is at 4/4 capacity with active SSE streams. Covers slot allocation, queue visibility, cancellation, retry, and recovery sequences.\n\nSetup: baseUrl=http://127.0.0.1:8741, apiKey=ek_live_your_key_here",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://127.0.0.1:8741",
+      "type": "string"
+    },
+    {
+      "key": "apiKey",
+      "value": "ek_live_your_key_here",
+      "type": "string"
+    },
+    {
+      "key": "requestId",
+      "value": "req_docqa_001",
+      "type": "string"
+    },
+    {
+      "key": "streamId",
+      "value": "stream_asr_001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Contention Setup (4/4 Slots)",
+      "description": "Fill all 4 edge agent slots before Doc Q&A arrives. Meeting Summariser holds slots 0+1 as long-running P0 SSE streams. Slots 2+3 occupied by batch NMT requests.",
+      "item": [
+        {
+          "name": "1.1 ASR Stream — SSE P0 (meeting-sum slot 0)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" },
+              { "key": "X-Priority", "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"asr-v2\",\n  \"input\": \"<base64_audio_chunk>\",\n  \"stream\": true,\n  \"caller_id\": \"meeting-sum\",\n  \"request_id\": \"req_asr_001\"\n}"
+            },
+            "description": "Opens SSE stream for live ASR transcription. Holds slot 0 for the entire recording session.\n\nExpected: 200 with Content-Type: text/event-stream. Slot 0 occupied.\nSSE events: data: {\"token\":\"Hello\",\"index\":0,\"done\":false}"
+          },
+          "response": []
+        },
+        {
+          "name": "1.2 TTS Stream — SSE P0 (meeting-sum slot 1)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" },
+              { "key": "X-Priority", "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"tts-v1\",\n  \"input\": \"Live transcription active\",\n  \"stream\": true,\n  \"caller_id\": \"meeting-sum\",\n  \"request_id\": \"req_tts_001\"\n}"
+            },
+            "description": "Opens SSE stream for live TTS audio output. Holds slot 1 alongside ASR.\n\nExpected: 200 with Content-Type: text/event-stream. Slot 1 occupied.\nMeeting Summariser per-MFE count: 2/2 (at quota)."
+          },
+          "response": []
+        },
+        {
+          "name": "1.3 Batch NMT — Fill Slots 3 and 4",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Caller-Id", "value": "batch-worker" },
+              { "key": "X-Priority", "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"nmt-v3\",\n  \"input\": \"Translate this document from Spanish to English\",\n  \"stream\": false,\n  \"caller_id\": \"batch-worker\",\n  \"request_id\": \"req_nmt_001\"\n}"
+            },
+            "description": "Represents two batch NMT requests filling slots 2 and 3. Run this request twice (request_id: req_nmt_001, req_nmt_002) to occupy both slots.\n\nExpected after 2 calls: 200 for each. Global slot count: 4/4. Doc Q&A will now be queued."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Doc Q&A Queued (P1 at SATURATED)",
+      "description": "Doc Q&A submits a normal-priority inference request while all 4 slots are occupied. Scheduler enqueues it in P1 lane and emits scheduler:queued event. No 429 — queueing is correct behavior.",
+      "item": [
+        {
+          "name": "2.1 Doc Q&A Inference — P1 Hits Queue",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Caller-Id", "value": "doc-qa" },
+              { "key": "X-Priority", "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"llm-v2\",\n  \"input\": \"What are the termination clauses in Section 4?\",\n  \"stream\": false,\n  \"caller_id\": \"doc-qa\",\n  \"request_id\": \"req_docqa_001\"\n}"
+            },
+            "description": "Submits doc Q&A query at normal (P1) priority. All 4 slots are taken — scheduler enqueues.\n\nExpected: 202 Accepted (queued, not rejected).\nEvent emitted: scheduler:queued { position: 1, estimated_wait_ms: ~500 }\nDoc Q&A quota: 0/2 in-flight, slots occupied by others."
+          },
+          "response": []
+        },
+        {
+          "name": "2.2 Subscribe to Scheduler Events — Queued Position",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/events", "host": ["{{baseUrl}}"], "path": ["v1", "events"] },
+            "description": "SSE subscription to receive scheduler events for doc-qa's request. MFEs see only their own queue state — not other MFEs' positions.\n\nExpected events:\n  data: {\"event\":\"scheduler:queued\",\"request_id\":\"req_docqa_001\",\"position\":1,\"estimated_wait_ms\":500}\n\nDoc Q&A UI should render: 'Queued — position 1 of queue' with indeterminate progress bar."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Slot Freed — Doc Q&A Dispatched",
+      "description": "When a batch NMT slot completes, the scheduler's dispatch loop fires immediately. Doc Q&A dequeues from P1 lane and is dispatched with queued_ms recorded.",
+      "item": [
+        {
+          "name": "3.1 Batch Slot Completes — Check Slot State",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/status", "host": ["{{baseUrl}}"], "path": ["v1", "status"] },
+            "description": "Poll slot state after a batch NMT request completes (simulated by waiting for batch response). Verifies slot count dropped from 4/4.\n\nExpected: { slots: { total: 4, in_use: 3, available: 1 }, state: 'DISPATCHING' }\nDispatch loop fires within <0.15ms of slot release."
+          },
+          "response": []
+        },
+        {
+          "name": "3.2 Doc Q&A Dispatched Event",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/events", "host": ["{{baseUrl}}"], "path": ["v1", "events"] },
+            "description": "Receives scheduler:dispatched event after slot freed. Includes queued_ms showing how long Doc Q&A waited.\n\nExpected event:\n  data: {\"event\":\"scheduler:dispatched\",\"request_id\":\"req_docqa_001\",\"queued_ms\":200,\"slot\":2}\n\nDoc Q&A UI transitions: 'Queued — position 1' → 'Processing your question...' (determinate spinner)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Cancellation Scenarios",
+      "description": "Three cancellation scenarios during contention. Each scenario tests slot accounting and cross-MFE independence.",
+      "item": [
+        {
+          "name": "4.1 Scenario A — Cancel Queued Doc Q&A (no slot freed)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference/{{requestId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference", "{{requestId}}"]
+            },
+            "description": "Doc Q&A unmounts while still in the P1 queue (never dispatched). Scheduler removes QueueEntry. No slot was ever consumed — nothing freed.\n\nExpected: 200 OK\nEvent: scheduler:cancelled { was_queued: true, request_id: '{{requestId}}' }\nSlot count: unchanged (4/4 still)\nMeeting Summariser: completely unaffected."
+          },
+          "response": []
+        },
+        {
+          "name": "4.2 Scenario B — Cancel In-flight Doc Q&A (slot freed)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference/{{requestId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference", "{{requestId}}"]
+            },
+            "description": "Doc Q&A cancels after being dispatched (in-flight). AbortController fires → fetch() aborted → TCP RST → agent drops request → slot freed.\n\nExpected: 200 OK\nAbortController chain: MFE signal → Scheduler AC → fetch() AC → TCP RST\nSlot count: drops from 4/4 to 3/4\nDispatch loop fires: next queued item (if any) dequeues within <0.15ms."
+          },
+          "response": []
+        },
+        {
+          "name": "4.3 Scenario C — Meeting Summariser Stops (2 slots freed, doc-qa dispatches)",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference/caller/meeting-sum",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference", "caller", "meeting-sum"]
+            },
+            "description": "User stops recording — Meeting Summariser calls cancelByCaller('meeting-sum'). Both ASR and TTS streams aborted simultaneously. 2 slots freed. Quota recalculates: only 1 MFE active, doc-qa max = 4.\n\nExpected: 200 OK\nSlot count: drops from 4/4 to 2/4\nDoc Q&A: dequeued and dispatched with actual_queued_ms ~50ms\nEvent: scheduler:dispatched { slot: 0, queued_ms: 50 }"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Retry Semantics",
+      "description": "MFEs own retry decisions. Scheduler returns retrying: false on all error codes. Each error code has a different recommended retry strategy.",
+      "item": [
+        {
+          "name": "5.1 Timeout Retry — User-Triggered",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Caller-Id", "value": "doc-qa" },
+              { "key": "X-Priority", "value": "normal" },
+              { "key": "X-Retry-Count", "value": "1" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"llm-v2\",\n  \"input\": \"What are the termination clauses in Section 4?\",\n  \"stream\": false,\n  \"caller_id\": \"doc-qa\",\n  \"request_id\": \"req_docqa_002\"\n}"
+            },
+            "description": "Second attempt after the 30s timeout. MFE shows 'Timed out — Retry?' button. User clicks it; MFE re-submits.\n\nPrevious error: { status: 'error', code: 'timeout', retrying: false }\nNew request: fresh 30s timer starts at new submission.\nExpected: 202 (queued if still 4/4) or 200 OK (if slot available)."
+          },
+          "response": []
+        },
+        {
+          "name": "5.2 Disconnected — Subscribe for Auto-Retry",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "doc-qa" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/events", "host": ["{{baseUrl}}"], "path": ["v1", "events"] },
+            "description": "Subscribe to receive connection:restored event. When agent goes offline and comes back, MFE auto-resubmits its last request without user action.\n\nExpected SSE event: data: {\"event\":\"connection:restored\",\"timestamp\":1700000000000}\nMFE action on receipt: re-call inference() with original request body.\nOnly one auto-retry per disconnected error — subsequent failures become user-triggered."
+          },
+          "response": []
+        },
+        {
+          "name": "5.3 Preempted — Scheduler Re-queues (P2 background)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Caller-Id", "value": "doc-qa" },
+              { "key": "X-Priority", "value": "background" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"llm-v2\",\n  \"input\": \"Summarise the full document\",\n  \"stream\": false,\n  \"caller_id\": \"doc-qa\",\n  \"priority\": \"background\",\n  \"request_id\": \"req_bg_001\"\n}"
+            },
+            "description": "P2 background request preempted by incoming P0. Scheduler re-queues at head of P2 lane — invisible to MFE.\n\nExpected MFE behavior: no change in UI state (still sees 'Processing').\nInternal: request moves from DISPATCHED → QUEUED at P2 lane head.\nP1 and P0 cannot be preempted. Only P2 is eligible."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Recovery Sequences",
+      "description": "Three contention-specific failure scenarios. Each tests that the scheduler and MFEs recover to a consistent state without data loss.",
+      "item": [
+        {
+          "name": "6.1 Agent Crash Mid-Stream (SUSPENDED state)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] },
+            "description": "Poll health endpoint after simulated agent crash. Scheduler transitions to SUSPENDED. All SSE streams fail with stream_interrupted error.\n\nExpected during crash: { status: 'unhealthy', state: 'SUSPENDED' }\nMeeting Summariser: AsyncGenerator throws, MFE shows 'Connection lost — buffers partial transcript'\nDoc Q&A: if queued, stays queued (timer continues). If in-flight, gets disconnected error.\nOn recovery: DRAINING state, queued requests dispatch in order."
+          },
+          "response": []
+        },
+        {
+          "name": "6.2 Long Stream Blocks Queue — 30s Timeout",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-Caller-Id", "value": "doc-qa" },
+              { "key": "X-Priority", "value": "normal" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"llm-v2\",\n  \"input\": \"Analyse this document\",\n  \"stream\": false,\n  \"caller_id\": \"doc-qa\",\n  \"request_id\": \"req_timeout_001\"\n}"
+            },
+            "description": "Submit Doc Q&A while Meeting Summariser holds all slots for > 30s. Timeout applies from submission, not from dispatch.\n\nTimeline:\n  t=0: queued (position 1)\n  t=20s: age-based promotion P1→P0 (priority escalated at WFQ head)\n  t=30s: TIMED_OUT — { status: 'error', code: 'timeout', retrying: false }\n  t=30s+: MFE shows 'Timed out — Retry?' button\n\nNote: promotion at t=20s does not create a new slot. 30s is the hard upper bound."
+          },
+          "response": []
+        },
+        {
+          "name": "6.3 User Stops Recording — Happy Path Dispatch",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/inference/caller/meeting-sum",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "inference", "caller", "meeting-sum"]
+            },
+            "description": "Best-case recovery: user naturally stops the meeting. Meeting Summariser calls cancelByCaller. Both SSE streams close cleanly.\n\nExpected chain:\n  1. TCP RST → 2 slots freed\n  2. Dispatch loop fires <0.15ms\n  3. Doc Q&A dequeued (actual_queued_ms: ~50ms)\n  4. scheduler:dispatched event received by doc-qa\n  5. Doc Q&A inference begins — answer delivered normally\n\nThis is the target steady state: contention resolves when natural stream lifecycle completes."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. SSE Streaming (Direct)",
+      "description": "Direct SSE endpoint validation. Verify stream open, token format, done signal, and connection teardown.",
+      "item": [
+        {
+          "name": "7.1 Open SSE Stream — Verify Connection",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "Cache-Control", "value": "no-cache" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/v1/stream/{{streamId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["v1", "stream", "{{streamId}}"]
+            },
+            "description": "Open a live SSE connection directly on a stream endpoint. Validates content-type header and initial connection response.\n\nExpected response headers:\n  Content-Type: text/event-stream; charset=utf-8\n  Cache-Control: no-cache\n  Connection: keep-alive\n  X-Accel-Buffering: no\n\nExpected initial event:\n  data: {\"event\":\"stream:ready\",\"stream_id\":\"{{streamId}}\"}"
+          },
+          "response": []
+        },
+        {
+          "name": "7.2 Token Format Validation",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{apiKey}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Accept", "value": "text/event-stream" },
+              { "key": "X-Caller-Id", "value": "meeting-sum" },
+              { "key": "X-Priority", "value": "critical" }
+            ],
+            "url": { "raw": "{{baseUrl}}/v1/inference", "host": ["{{baseUrl}}"], "path": ["v1", "inference"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"asr-v2\",\n  \"input\": \"<short_audio_sample>\",\n  \"stream\": true,\n  \"caller_id\": \"meeting-sum\",\n  \"request_id\": \"req_token_val_001\"\n}"
+            },
+            "description": "Validate SSE token event format. Each token must conform to the documented schema.\n\nExpected token events:\n  data: {\"token\":\"Hello\",\"index\":0,\"done\":false}\n  data: {\"token\":\" world\",\"index\":1,\"done\":false}\n  data: {\"token\":\"\",\"index\":2,\"done\":true}\n\nFinal event:\n  data: {\"event\":\"stream:done\",\"total_tokens\":3,\"duration_ms\":150}\n\nForwarding latency: < 0.01ms (AsyncGenerator yield, no buffering)."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

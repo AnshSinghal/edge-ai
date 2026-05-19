@@ -1,0 +1,76 @@
+<svg width="720" height="320" viewBox="0 0 720 320" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>Warm vs Cold Restart Comparison</title>
+<desc>Shows why warm restart (500ms) is faster than cold start (2-5s) using OS page cache, pre-resolved model paths, and skipped inventory scan.</desc>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">WARM RESTART vs COLD START</text>
+
+<!-- Cold start bar -->
+<text x="40" y="60" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">Cold start</text>
+<text x="130" y="60" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">(first boot or after reboot)</text>
+
+<!-- Cold phases -->
+<rect x="40" y="70" width="60" height="28" rx="4" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="70" y="88" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(206,203,246)">spawn</text>
+
+<rect x="104" y="70" width="80" height="28" rx="4" fill="rgb(68,68,65)" stroke="rgb(180,178,169)" stroke-width="0.5"/>
+<text x="144" y="88" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(250,249,245)">scan models</text>
+
+<rect x="188" y="70" width="60" height="28" rx="4" fill="rgb(113,43,19)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="218" y="88" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(245,196,179)">init RT</text>
+
+<rect x="252" y="70" width="320" height="28" rx="4" fill="rgb(113,43,19)" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<text x="412" y="88" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(240,120,110)">read model from disk (I/O bound, 2-5 s)</text>
+
+<rect x="576" y="70" width="40" height="28" rx="4" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="596" y="88" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(159,225,203)">ready</text>
+
+<text x="640" y="88" font-family="'SF Mono','Fira Code',monospace" font-size="10" fill="rgb(200,80,70)">~3-5 s</text>
+
+<!-- Warm restart bar -->
+<text x="40" y="136" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">Warm restart</text>
+<text x="140" y="136" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.8">(crash recovery — model in page cache)</text>
+
+<!-- Warm phases -->
+<rect x="40" y="146" width="40" height="28" rx="4" fill="rgb(60,52,137)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="60" y="164" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(206,203,246)">spawn</text>
+
+<rect x="84" y="146" width="40" height="28" rx="4" fill="rgb(113,43,19)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="104" y="164" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(245,196,179)">init RT</text>
+
+<rect x="128" y="146" width="100" height="28" rx="4" fill="rgb(113,43,19)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="178" y="164" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(159,225,203)">mmap (page cache hit)</text>
+
+<rect x="232" y="146" width="40" height="28" rx="4" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="252" y="164" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(159,225,203)">ready</text>
+
+<text x="290" y="164" font-family="'SF Mono','Fira Code',monospace" font-size="10" font-weight="600" fill="rgb(93,202,165)">~500 ms</text>
+<text x="370" y="164" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(93,202,165)" opacity="0.6">6-10× faster</text>
+
+<!-- Separator -->
+<line x1="40" y1="194" x2="680" y2="194" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+
+<!-- Why it's faster -->
+<text x="40" y="216" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">WHY WARM IS FASTER</text>
+
+<!-- Reason 1 -->
+<rect x="40" y="230" width="8" height="8" rx="4" fill="rgb(93,202,165)" opacity="0.6"/>
+<text x="56" y="238" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">OS page cache</text>
+<text x="56" y="254" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Model file was recently read → pages still in RAM. mmap resolves from cache, not disk.</text>
+
+<!-- Reason 2 -->
+<rect x="40" y="268" width="8" height="8" rx="4" fill="rgb(93,202,165)" opacity="0.6"/>
+<text x="56" y="276" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">Skip model scan</text>
+<text x="56" y="292" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Supervisor tells new worker which model to load via worker_state.json — no inventory walk.</text>
+
+<!-- Reason 3 -->
+<rect x="400" y="230" width="8" height="8" rx="4" fill="rgb(93,202,165)" opacity="0.6"/>
+<text x="416" y="238" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">Pre-validated model</text>
+<text x="416" y="254" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">SHA-256 was verified on initial load. Skip re-check on warm restart.</text>
+
+<!-- Reason 4 -->
+<rect x="400" y="268" width="8" height="8" rx="4" fill="rgb(93,202,165)" opacity="0.6"/>
+<text x="416" y="276" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="11" font-weight="500" fill="rgb(250,249,245)">IPC channel pre-allocated</text>
+<text x="416" y="292" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.6">Supervisor reuses the same pipe/socket name — new worker connects instantly.</text>
+</svg>

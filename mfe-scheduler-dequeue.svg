@@ -1,0 +1,99 @@
+<svg width="720" height="480" viewBox="0 0 720 480" role="img" xmlns="http://www.w3.org/2000/svg">
+  <rect id="zds-svg-bg" x="0" y="0" width="100%" height="100%" fill="#0d1117"/>
+<title>Scheduler Dequeue Algorithm — Weighted Fair Queueing</title>
+<desc>Step-by-step dequeue decision: check concurrency, select priority lane (WFQ), check per-MFE quota, dispatch or promote from waiting queue.</desc>
+<defs>
+  <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+    <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </marker>
+</defs>
+
+<!-- Title -->
+<text x="360" y="20" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.08em">DEQUEUE ALGORITHM — WEIGHTED FAIR QUEUEING</text>
+<text x="360" y="36" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75">slot freed → select lane → check fairness → dispatch → on-complete loop</text>
+
+<!-- Step 1: Slot freed -->
+<rect x="40" y="56" width="140" height="34" rx="6" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.3)" stroke-width="0.5"/>
+<text x="110" y="77" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(250,249,245)">Slot freed (or new)</text>
+
+<line x1="180" y1="73" x2="220" y2="73" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Step 2: Anti-starvation check -->
+<rect x="222" y="56" width="180" height="34" rx="17" fill="rgb(38,38,36)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="312" y="77" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="9" fill="rgb(240,153,123)">consecutive_hi &gt;= 8?</text>
+
+<!-- YES: force P2 -->
+<line x1="312" y1="90" x2="312" y2="120" stroke="rgb(240,153,123)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="324" y="108" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(240,153,123)" opacity="0.6">yes</text>
+
+<rect x="252" y="122" width="120" height="28" rx="4" fill="rgb(38,38,36)" stroke="rgb(194,192,182)" stroke-width="0.5"/>
+<text x="312" y="140" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="9" fill="rgb(194,192,182)">force dequeue P2</text>
+
+<!-- NO: WFQ selection -->
+<line x1="402" y1="73" x2="440" y2="73" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="421" y="66" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)" opacity="0.6">no</text>
+
+<!-- Step 3: WFQ lane selection -->
+<rect x="442" y="50" width="240" height="64" rx="6" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="562" y="68" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">WFQ Lane Selection</text>
+<text x="562" y="84" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)" opacity="0.6">P0 (wt 4) → P1 (wt 2) → P2 (wt 1)</text>
+<text x="562" y="98" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.75">pick non-empty lane with lowest virtual time</text>
+
+<!-- Arrow down to fairness check -->
+<line x1="562" y1="114" x2="562" y2="148" stroke="rgb(194,192,182)" stroke-width="0.5" marker-end="url(#arr)"/>
+
+<!-- Step 4: Per-MFE fairness check -->
+<rect x="442" y="150" width="240" height="34" rx="17" fill="rgb(38,38,36)" stroke="rgb(175,169,236)" stroke-width="0.5"/>
+<text x="562" y="171" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="9" fill="rgb(175,169,236)">head.caller in_flight &lt; per_mfe_max?</text>
+
+<!-- YES: dispatch -->
+<line x1="562" y1="184" x2="562" y2="218" stroke="rgb(93,202,165)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="574" y="204" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(93,202,165)" opacity="0.6">yes</text>
+
+<rect x="482" y="220" width="160" height="34" rx="6" fill="rgb(8,80,65)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="562" y="241" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">Dispatch to Agent</text>
+
+<!-- NO: skip to next in lane -->
+<line x1="682" y1="167" x2="700" y2="167" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<path d="M700 167 L700 210 L690 210" fill="none" stroke="rgb(200,80,70)" stroke-width="0.5" marker-end="url(#arr)"/>
+<text x="692" y="192" font-family="'SF Mono','Fira Code',monospace" font-size="7" fill="rgb(200,80,70)" opacity="0.6">no → skip</text>
+
+<rect x="612" y="200" width="80" height="28" rx="4" fill="rgb(38,38,36)" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<text x="652" y="218" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(200,80,70)" opacity="0.7">next in lane</text>
+
+<!-- ═══ ON-COMPLETE LOOP ═══ -->
+<line x1="40" y1="278" x2="680" y2="278" stroke="rgba(222,220,209,0.12)" stroke-width="0.5"/>
+<text x="360" y="300" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" fill="rgb(194,192,182)" opacity="0.75" letter-spacing="0.06em">ON-COMPLETE / ON-CANCEL / ON-TIMEOUT</text>
+
+<!-- Completion flow -->
+<rect x="40" y="316" width="200" height="80" rx="6" fill="rgb(38,38,36)" stroke="rgb(93,202,165)" stroke-width="0.5"/>
+<text x="60" y="336" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(159,225,203)">On Response (200 / 503)</text>
+<text x="60" y="354" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">1. decrement in_flight[caller]</text>
+<text x="60" y="368" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">2. free concurrency slot</text>
+<text x="60" y="382" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">3. trigger dequeue loop</text>
+
+<!-- Cancellation flow -->
+<rect x="260" y="316" width="200" height="80" rx="6" fill="rgb(38,38,36)" stroke="rgb(240,153,123)" stroke-width="0.5"/>
+<text x="280" y="336" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(245,196,179)">On Cancel / Unmount</text>
+<text x="280" y="354" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">1. abort in-flight HTTP/WS</text>
+<text x="280" y="368" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">2. remove queued entries</text>
+<text x="280" y="382" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">3. free slots + dequeue</text>
+
+<!-- Timeout flow -->
+<rect x="480" y="316" width="200" height="80" rx="6" fill="rgb(38,38,36)" stroke="rgb(200,80,70)" stroke-width="0.5"/>
+<text x="500" y="336" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="10" font-weight="500" fill="rgb(200,80,70)">On Timeout (30s)</text>
+<text x="500" y="354" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">1. abort in-flight request</text>
+<text x="500" y="368" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">2. return { error: 'timeout' }</text>
+<text x="500" y="382" font-family="'SF Mono','Fira Code',monospace" font-size="8" fill="rgb(194,192,182)" opacity="0.8">3. free slot + dequeue</text>
+
+<!-- Loop arrows -->
+<path d="M140 396 L140 420 L360 420 L360 440" fill="none" stroke="rgb(93,202,165)" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+<path d="M360 396 L360 440" fill="none" stroke="rgb(240,153,123)" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+<path d="M580 396 L580 420 L360 420 L360 440" fill="none" stroke="rgb(200,80,70)" stroke-width="0.5" stroke-dasharray="3 3" marker-end="url(#arr)"/>
+
+<rect x="290" y="442" width="140" height="24" rx="4" fill="rgb(38,38,36)" stroke="rgba(222,220,209,0.2)" stroke-width="0.5"/>
+<text x="360" y="458" text-anchor="middle" font-family="'SF Mono','Fira Code',monospace" font-size="9" fill="rgb(194,192,182)">→ dequeue next</text>
+
+<!-- Footer -->
+<text x="360" y="478" text-anchor="middle" font-family="'Anthropic Sans', -apple-system, system-ui, 'Segoe UI', sans-serif" font-size="9" fill="rgb(194,192,182)" opacity="0.65">Every slot release triggers the dequeue loop. Ensures no request waits longer than necessary.</text>
+</svg>
